@@ -60,6 +60,38 @@ AGENT_PASSWORDS=cline:CHANGE-ME,codebuddy:CHANGE-ME     # AI Agent（name:passwo
 }
 ```
 
+### Trae IDE 项目级 MCP 配置
+
+新增 `.trae/mcp.json`，支持 Trae IDE 自动加载 project-manager MCP Server，无需手动在设置中添加。
+
+```json
+// .trae/mcp.json（项目级配置，Trae IDE 自动加载）
+{
+  "mcpServers": {
+    "project-manager": {
+      "command": "python",
+      "args": ["d:/AI-learning/tce_tiku/project_mananger_system/backend/mcp_server.py"],
+      "env": {
+        "PM_API_URL": "http://localhost:8000/api/v1",
+        "PM_AGENT_PASSWORD": "CHANGE-ME"
+      }
+    }
+  }
+}
+```
+
+> 注意：需在 Trae 设置 → MCP 中开启「启用项目级 MCP」开关。
+
+### v2 设计文档
+
+新增 [system-design-02.md](docs/design/system-design-02.md) 和 [phase-plan-02.md](docs/plan/phase-plan-02.md)，规划从"人机协作工具"到"一人项目组操作系统"的演进路线：
+
+| Phase | 版本 | 核心功能 |
+|-------|------|----------|
+| Phase 4 | v0.4.0 | 多项目支持 + 通知系统 + SSE 推送 |
+| Phase 5 | v0.5.0 | 拖拽看板 + 数据看板 + Agent 统计 |
+| Phase 6 | v0.6.0 | 工作流引擎 + 内置模板 + 自动触发 |
+
 ### 验证结果
 
 | 测试 | 结果 |
@@ -67,9 +99,12 @@ AGENT_PASSWORDS=cline:CHANGE-ME,codebuddy:CHANGE-ME     # AI Agent（name:passwo
 | `admin` 密码登录 → `sub: "admin"`, `role: "admin"` | ✅ |
 | `CHANGE-ME` 密码登录 → `sub: "cline"`, `role: "agent"` | ✅ |
 | `CHANGE-ME` 密码登录 → `sub: "codebuddy"`, `role: "agent"` | ✅ |
+| `CHANGE-ME` 密码登录 → `sub: "trae"`, `role: "agent"` | ✅ |
 | 错误密码 → 401 拒绝 | ✅ |
 | cline 创建 issue → ActivityLog `actor: "cline"` | ✅ |
 | codebuddy 创建 issue → ActivityLog `actor: "codebuddy"` | ✅ |
+| trae MCP 连接 → Identity: trae (role=agent) | ✅ |
+| trae MCP 创建 Issue #10 → ActivityLog `actor: "trae"` | ✅ |
 
 ---
 

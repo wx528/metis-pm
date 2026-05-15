@@ -1,0 +1,103 @@
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc, func, case
+
+from src.core.dependencies import get_db
+from src.models.milestone import Milestone
+from src.models.issue import Issue, IssueStatus
+from src.schemas.milestone import MilestoneCreate, MilestoneUpdate, MilestoneRead, MilestoneReadWithStats
+from src.routes.auth import get_current_user
+
+router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+@router.get("", response_model=List[MilestoneRead])
+async def list_milestones(
+    db: AsyncSession = Depends(get_db),
+    status: Optional[str] = Query(None),
+    phase: Optional[str] = Query(None),
+):
+    """里程碑列表"""
+    query = select(Milestone).order_by(desc(Milestone.created_at))
+    if status:
+        query = query.where(Milestone.status == status)
+    if phase:
+        query = query.where(Milestone.phase == phase)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.post("", response_model=MilestoneRead, status_code=201)
+async def create_milestone(data: MilestoneCreate, db: AsyncSession = Depends(get_db)):
+    """创建里程碑"""
+    milestone = Milestone(**data.model_dump())
+    db.add(milestone)
+    await db.commit()
+    await db.refresh(milestone)
+    return milestone
+
+
+@router.get("/{milestone_id}", response_model=MilestoneReadWithStats)
+async def get_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
+    """里程碑详情（含统计）"""
+    result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+    milestone = result.scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+
+    # 用 case-when 聚合统计该里程碑下的 issues
+    stats_result = await db.execute(
+        select(
+            func.count(Issue.id).label("total"),
+            func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+            func.sum(case((Issue.status == IssueStatus.CLOSED, 1), else_=0)).label("closed"),
+            func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
+        ).where(Issue.milestone_id == milestone_id)
+    )
+    row = stats_result.one()
+
+    # 构造返回数据，避免触发 lazy load
+    return MilestoneReadWithStats(
+        id=milestone.id,
+        title=milestone.title,
+        description=milestone.description,
+        phase=milestone.phase,
+        status=milestone.status,
+        due_date=milestone.due_date,
+        created_at=milestone.created_at,
+        updated_at=milestone.updated_at,
+        total_issues=row.total or 0,
+        open_issues=row.open or 0,
+        closed_issues=row.closed or 0,
+        deferred_issues=row.deferred or 0,
+    )
+
+
+@router.put("/{milestone_id}", response_model=MilestoneRead)
+async def update_milestone(milestone_id: int, data: MilestoneUpdate, db: AsyncSession = Depends(get_db)):
+    """更新里程碑"""
+    result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+    milestone = result.scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(milestone, key, value)
+
+    await db.commit()
+    await db.refresh(milestone)
+    return milestone
+
+
+@router.delete("/{milestone_id}", status_code=204)
+async def delete_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
+    """删除里程碑"""
+    result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+    milestone = result.scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    await db.delete(milestone)
+    await db.commit()
+    return None

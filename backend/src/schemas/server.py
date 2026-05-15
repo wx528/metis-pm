@@ -1,0 +1,68 @@
+from datetime import datetime
+from typing import Optional, Literal
+from pydantic import BaseModel, Field
+
+ServerType = Literal["web", "db", "cache", "worker", "other"]
+ServerStatus = Literal["active", "maintenance", "offline", "decommissioned"]
+ServerEnvironment = Literal["production", "staging", "development"]
+
+
+class ServerCreate(BaseModel):
+    name: str = Field(..., max_length=100)
+    description: Optional[str] = None
+    ip_address: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    ssh_key: Optional[str] = None
+    server_type: ServerType = "other"
+    status: ServerStatus = "active"
+    environment: ServerEnvironment = "development"
+    labels: Optional[str] = None
+
+
+class ServerUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    ip_address: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    ssh_key: Optional[str] = None
+    server_type: Optional[ServerType] = None
+    status: Optional[ServerStatus] = None
+    environment: Optional[ServerEnvironment] = None
+    labels: Optional[str] = None
+    last_checked_at: Optional[datetime] = None
+
+
+class ServerRead(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    ip_address: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    ssh_key: Optional[str] = None
+    server_type: str
+    status: str
+    environment: str
+    labels: Optional[str] = None
+    last_checked_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ServerCredentials(BaseModel):
+    """服务器凭据（单独接口返回）"""
+    id: int
+    name: str
+    ip_address: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    ssh_key: Optional[str] = None

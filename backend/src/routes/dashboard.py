@@ -1,0 +1,126 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, case
+
+from src.core.dependencies import get_db
+from src.core.activity import log_activity
+from src.models.issue import Issue, IssueStatus, IssuePriority
+from src.models.plan import Plan, PlanStatus
+from src.models.server import Server, ServerStatus
+from src.models.activity_log import ActivityLog
+from src.routes.auth import get_current_user
+
+router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+@router.get("")
+async def get_dashboard(db: AsyncSession = Depends(get_db)):
+    """Dashboard 数据聚合"""
+
+    # Issues 统计
+    issues_result = await db.execute(
+        select(
+            func.count(Issue.id).label("total"),
+            func.sum(case((Issue.priority == IssuePriority.P0, 1), else_=0)).label("p0"),
+            func.sum(case((Issue.priority == IssuePriority.P1, 1), else_=0)).label("p1"),
+            func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+            func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
+            func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
+            func.sum(case((Issue.source == "ai_agent", 1), else_=0)).label("ai_agent"),
+        )
+    )
+    issues_row = issues_result.one()
+
+    # Plans 统计
+    plans_result = await db.execute(
+        select(
+            func.count(Plan.id).label("total"),
+            func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending_approval"),
+            func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
+        )
+    )
+    plans_row = plans_result.one()
+
+    # Servers 统计
+    servers_result = await db.execute(
+        select(
+            func.count(Server.id).label("total"),
+            func.sum(case((Server.status == ServerStatus.ACTIVE, 1), else_=0)).label("active"),
+            func.sum(case((Server.status == ServerStatus.MAINTENANCE, 1), else_=0)).label("maintenance"),
+            func.sum(case((Server.status == ServerStatus.OFFLINE, 1), else_=0)).label("offline"),
+        )
+    )
+    servers_row = servers_result.one()
+
+    # 最近 Activity
+    activity_result = await db.execute(
+        select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(10)
+    )
+    activities = activity_result.scalars().all()
+
+    # 待审批计划列表
+    pending_plans_result = await db.execute(
+        select(Plan).where(Plan.status == PlanStatus.PENDING_APPROVAL).order_by(Plan.created_at.desc())
+    )
+    pending_plans = pending_plans_result.scalars().all()
+
+    # 最近 Issues
+    recent_issues_result = await db.execute(
+        select(Issue).order_by(Issue.created_at.desc()).limit(5)
+    )
+    recent_issues = recent_issues_result.scalars().all()
+
+    return {
+        "issues": {
+            "total": issues_row.total or 0,
+            "p0": issues_row.p0 or 0,
+            "p1": issues_row.p1 or 0,
+            "open": issues_row.open or 0,
+            "in_progress": issues_row.in_progress or 0,
+            "deferred": issues_row.deferred or 0,
+            "ai_agent": issues_row.ai_agent or 0,
+        },
+        "plans": {
+            "total": plans_row.total or 0,
+            "pending_approval": plans_row.pending_approval or 0,
+            "active": plans_row.active or 0,
+        },
+        "servers": {
+            "total": servers_row.total or 0,
+            "active": servers_row.active or 0,
+            "maintenance": servers_row.maintenance or 0,
+            "offline": servers_row.offline or 0,
+        },
+        "recent_activities": [
+            {
+                "id": a.id,
+                "entity_type": a.entity_type,
+                "entity_id": a.entity_id,
+                "action": a.action,
+                "actor": a.actor,
+                "created_at": a.created_at.isoformat(),
+            }
+            for a in activities
+        ],
+        "pending_plans": [
+            {
+                "id": p.id,
+                "title": p.title,
+                "description": p.description,
+                "proposed_by": p.proposed_by,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p in pending_plans
+        ],
+        "recent_issues": [
+            {
+                "id": i.id,
+                "title": i.title,
+                "priority": i.priority,
+                "status": i.status,
+                "source": i.source,
+                "created_at": i.created_at.isoformat(),
+            }
+            for i in recent_issues
+        ],
+    }

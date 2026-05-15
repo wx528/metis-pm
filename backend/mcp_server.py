@@ -321,7 +321,10 @@ async def list_milestones() -> str:
         lines = [f"Total: {len(items)} milestones"]
         for item in items:
             phase = f" ({item['phase']})" if item.get('phase') else ""
-            lines.append(f"  #{item['id']} [{item['status']}] {item['title']}{phase}")
+            desc = f"\n    描述: {item['description']}" if item.get('description') else ""
+            due = f"\n    截止: {item['due_date']}" if item.get('due_date') else ""
+            stats = f"\n    统计: {item.get('total_issues',0)} issues ({item.get('open_issues',0)} open, {item.get('closed_issues',0)} closed, {item.get('deferred_issues',0)} deferred)"
+            lines.append(f"  #{item['id']} [{item['status']}] {item['title']}{phase}{desc}{due}{stats}")
         return "\n".join(lines)
 
 

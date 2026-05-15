@@ -12,12 +12,14 @@ import {
   message,
   Divider,
   Space,
+  List,
+  Avatar,
 } from "antd";
-import { ArrowLeftOutlined, PauseCircleOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, PauseCircleOutlined, UserOutlined, RobotOutlined } from "@ant-design/icons";
 import { issuesApi } from "../api/issues";
 import { milestonesApi } from "../api/milestones";
 import ActivityTimeline from "../components/ActivityTimeline";
-import type { Issue, Milestone } from "../api";
+import type { Issue, Milestone, Comment } from "../api";
 
 const { Option } = Select;
 
@@ -47,6 +49,7 @@ export default function IssueDetail() {
   const [deferOpen, setDeferOpen] = useState(false);
   const [editForm] = Form.useForm();
   const [deferForm] = Form.useForm();
+  const [commentText, setCommentText] = useState("");
 
   const fetchIssue = async () => {
     if (!id) return;
@@ -91,6 +94,18 @@ export default function IssueDetail() {
       fetchIssue();
     } catch {
       message.error("暂缓失败");
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!id || !commentText.trim()) return;
+    try {
+      await issuesApi.addComment(Number(id), { content: commentText.trim() });
+      message.success("评论已添加");
+      setCommentText("");
+      fetchIssue();
+    } catch {
+      message.error("评论失败");
     }
   };
 
@@ -152,6 +167,48 @@ export default function IssueDetail() {
         <h4>描述</h4>
         <div style={{ whiteSpace: "pre-wrap", color: "#555" }}>
           {issue.description || "无描述"}
+        </div>
+
+        <Divider />
+        <h4>评论 ({(issue as any).comments?.length || 0})</h4>
+        {(issue as any).comments?.length > 0 ? (
+          <List
+            dataSource={(issue as any).comments}
+            renderItem={(c: Comment) => (
+              <List.Item>
+                <List.Item.Meta
+                  avatar={
+                    <Avatar
+                      icon={c.author === "ai_agent" ? <RobotOutlined /> : <UserOutlined />}
+                      style={{ backgroundColor: c.author === "ai_agent" ? "#722ed1" : "#1890ff" }}
+                    />
+                  }
+                  title={
+                    <span>
+                      {c.author || "匿名"}
+                      <span style={{ color: "#999", fontSize: 12, marginLeft: 8 }}>
+                        {new Date(c.created_at).toLocaleString("zh-CN")}
+                      </span>
+                    </span>
+                  }
+                  description={c.content}
+                />
+              </List.Item>
+            )}
+          />
+        ) : (
+          <div style={{ color: "#999", textAlign: "center", padding: 16 }}>暂无评论</div>
+        )}
+        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+          <Input.TextArea
+            rows={2}
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder="添加评论..."
+          />
+          <Button type="primary" onClick={handleAddComment} disabled={!commentText.trim()}>
+            发送
+          </Button>
         </div>
 
         <Divider />

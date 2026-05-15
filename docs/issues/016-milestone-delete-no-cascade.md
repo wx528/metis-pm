@@ -1,6 +1,6 @@
 # 016 — Milestone 删除未检查关联 Issue
 
-> 优先级: P1 | 类型: data-integrity | 状态: open
+> 优先级: P1 | 类型: data-integrity | 状态: **fixed**
 
 ## 问题描述
 

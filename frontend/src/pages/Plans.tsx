@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from "antd";
+import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm, Progress } from "antd";
 import { PlusOutlined, CheckOutlined, CloseOutlined, RobotOutlined, TeamOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { plansApi } from "../api/plans";
@@ -59,13 +59,21 @@ export default function Plans() {
   };
 
   const handleReject = async (id: number) => {
-    try {
-      await plansApi.reject(id);
-      message.success("已拒绝");
-      fetch();
-    } catch {
-      message.error("操作失败");
-    }
+    Modal.confirm({
+      title: "拒绝计划",
+      content: "确认拒绝此计划？",
+      okText: "确认拒绝",
+      okType: "danger",
+      onOk: async () => {
+        try {
+          await plansApi.reject(id);
+          message.success("已拒绝");
+          fetch();
+        } catch {
+          message.error("操作失败");
+        }
+      },
+    });
   };
 
   const handleDelete = async (id: number) => {
@@ -107,6 +115,17 @@ export default function Plans() {
       dataIndex: "approved_by",
       width: 100,
       render: (s?: string) => s || "-",
+    },
+    {
+      title: "进度",
+      width: 140,
+      render: (_: any, record: Plan) => {
+        const total = record.item_count ?? 0;
+        const done = record.item_done_count ?? 0;
+        if (total === 0) return <span style={{ color: "#999" }}>无任务</span>;
+        const percent = Math.round((done / total) * 100);
+        return <Progress percent={percent} size="small" format={() => `${done}/${total}`} />;
+      },
     },
     {
       title: "创建时间",

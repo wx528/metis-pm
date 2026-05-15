@@ -4,7 +4,21 @@
 
 ## 快速启动
 
-### 后端
+### 1. 配置环境变量
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`，**必须设置**以下变量：
+
+```env
+SECRET_KEY=your-random-secret-key-here-min-32-chars
+ADMIN_PASSWORD=your-secure-password
+```
+
+### 2. 启动后端
+
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -13,7 +27,8 @@ python main.py
 # Swagger 文档: http://localhost:8000/docs
 ```
 
-### 前端
+### 3. 启动前端
+
 ```bash
 cd frontend
 npm install
@@ -22,7 +37,13 @@ npm run dev
 # 自动代理 API 请求到 localhost:8000
 ```
 
-默认密码：`admin`
+### Docker 一键启动
+
+```bash
+docker compose up -d
+# 前端: http://localhost:8080
+# API:  http://localhost:8000
+```
 
 ## 核心理念
 
@@ -79,12 +100,13 @@ npm run dev
 | `status` | draft / **pending_approval** / active / completed / abandoned |
 | `proposed_by` | 谁提议的：user / ai_agent |
 | `approved_by` | 谁审批的 |
+| `reject_reason` | 拒绝原因 |
 
 **审批流：**
 ```
 Agent 提议 → pending_approval → 你点击"审批通过" → active → Agent 更新进展
                      ↓
-                  你点击"拒绝" → abandoned
+              你点击"拒绝" → abandoned（可填写拒绝原因）
 ```
 
 ### PlanItem（计划项/Checklist）
@@ -101,32 +123,38 @@ Agent 提议 → pending_approval → 你点击"审批通过" → active → Age
 |------|------|
 | `name` | 服务器名称 |
 | `ip_address` | IP |
-| `username` / `password` | 凭据（明文，仅本地） |
+| `username` | 用户名 |
+| `has_password` / `has_ssh_key` | 凭据标志（不暴露实际值） |
 | `status` | active / maintenance / offline / decommissioned |
 | `environment` | production / staging / development |
+
+> 凭据通过 `GET /api/v1/servers/{id}/credentials` 单独接口获取，列表和详情接口不返回敏感信息。
 
 ## 前端页面
 
 | 页面 | 功能 |
 |------|------|
-| Dashboard | P0/P1 issues、待审批计划、服务器状态概览 |
-| Issues | 列表、筛选、新建、详情、评论、暂缓 |
+| Dashboard | P0/P1 issues、待审批计划、服务器状态概览、最近活动时间线 |
+| Issues | 列表（筛选+排序+分页）、新建、详情（含评论）、暂缓 |
 | Milestones | 阶段卡片、issue 统计 |
-| Plans | 计划列表、审批操作、详情 checklist |
+| Plans | 计划列表（含进度条）、审批操作、详情 checklist |
+| Servers | 服务器列表、添加、查看凭据 |
 
 ## API 接口
 
+> 所有接口均需 JWT 认证（`Authorization: Bearer <token>`）
+
 ### Auth
 ```
-POST /api/v1/auth/login          # 登录（密码 admin）
+POST /api/v1/auth/login          # 登录
 GET  /api/v1/auth/me             # 当前用户
 ```
 
 ### Issues
 ```
-GET    /api/v1/issues                    # 列表（支持筛选）
+GET    /api/v1/issues                    # 列表（支持筛选、排序、分页）
 POST   /api/v1/issues                    # 创建
-GET    /api/v1/issues/{id}               # 详情
+GET    /api/v1/issues/{id}               # 详情（含评论）
 PUT    /api/v1/issues/{id}               # 更新
 DELETE /api/v1/issues/{id}               # 删除
 POST   /api/v1/issues/{id}/defer         # 暂缓
@@ -135,7 +163,7 @@ POST   /api/v1/issues/{id}/comments      # 添加评论
 
 ### Milestones
 ```
-GET    /api/v1/milestones                # 列表
+GET    /api/v1/milestones                # 列表（含统计）
 POST   /api/v1/milestones                # 创建
 GET    /api/v1/milestones/{id}           # 详情（含统计）
 PUT    /api/v1/milestones/{id}           # 更新
@@ -144,12 +172,12 @@ DELETE /api/v1/milestones/{id}           # 删除
 
 ### Plans
 ```
-GET    /api/v1/plans                     # 列表
+GET    /api/v1/plans                     # 列表（含进度统计）
 POST   /api/v1/plans                     # 创建
 GET    /api/v1/plans/{id}                # 详情（含 plan_items）
 PUT    /api/v1/plans/{id}                # 更新
 POST   /api/v1/plans/{id}/approve        # 审批通过
-POST   /api/v1/plans/{id}/reject         # 拒绝
+POST   /api/v1/plans/{id}/reject         # 拒绝（可选 reason 参数）
 DELETE /api/v1/plans/{id}                # 删除
 GET    /api/v1/plans/{id}/items          # 计划项列表
 POST   /api/v1/plans/{id}/items          # 添加计划项
@@ -159,13 +187,30 @@ DELETE /api/v1/plans/{id}/items/{item_id} # 删除计划项
 
 ### Servers
 ```
-GET    /api/v1/servers                   # 列表
+GET    /api/v1/servers                   # 列表（不含凭据）
 POST   /api/v1/servers                   # 创建
-GET    /api/v1/servers/{id}              # 详情
+GET    /api/v1/servers/{id}              # 详情（不含凭据）
 PUT    /api/v1/servers/{id}              # 更新
 DELETE /api/v1/servers/{id}              # 删除
+GET    /api/v1/servers/{id}/credentials  # 获取凭据
 POST   /api/v1/servers/{id}/check        # 手动检查
 ```
+
+### Dashboard
+```
+GET    /api/v1/dashboard                 # 聚合统计数据
+```
+
+## 安全说明
+
+| 措施 | 说明 |
+|------|------|
+| JWT 认证 | 所有 API 端点需携带 Bearer Token |
+| 凭据隔离 | 服务器密码/SSH Key 不在列表/详情接口返回，通过独立接口获取 |
+| CORS 限制 | 通过 `CORS_ORIGINS` 环境变量配置允许的来源 |
+| 密钥强制 | `SECRET_KEY` 和 `ADMIN_PASSWORD` 必须在 `.env` 中设置，无默认值 |
+| MCP Token | MCP Server 通过 `PM_TOKEN` 环境变量认证，启动时检查 |
+| LIKE 转义 | 搜索接口转义 `%`、`_`、`\` 防止通配符注入 |
 
 ## 典型工作流
 
@@ -173,6 +218,7 @@ POST   /api/v1/servers/{id}/check        # 手动检查
 ```bash
 curl -X POST http://localhost:8000/api/v1/milestones \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"title": "Phase 1 - 基础功能", "phase": "phase-1"}'
 ```
 
@@ -181,17 +227,20 @@ curl -X POST http://localhost:8000/api/v1/milestones \
 # 你创建一个 P1 issue
 curl -X POST http://localhost:8000/api/v1/issues \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"title": "登录页面无法跳转", "issue_type": "bug", "priority": "P1", "source": "user"}'
 
 # AI Agent 发现一个优化点
 curl -X POST http://localhost:8000/api/v1/issues \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"title": "搜索接口可加缓存", "issue_type": "improvement", "priority": "P3", "source": "ai_agent"}'
 ```
 
 ### 3. 暂缓不需要现在处理的 Issue
 ```bash
-curl -X POST "http://localhost:8000/api/v1/issues/2/defer?deferred_to_milestone_id=2&deferred_reason=当前阶段聚焦核心功能"
+curl -X POST "http://localhost:8000/api/v1/issues/2/defer?deferred_to_milestone_id=2&deferred_reason=当前阶段聚焦核心功能" \
+  -H "Authorization: Bearer <token>"
 ```
 
 ### 4. Agent 提议计划，你审批
@@ -199,8 +248,23 @@ curl -X POST "http://localhost:8000/api/v1/issues/2/defer?deferred_to_milestone_
 # Agent 提议
 curl -X POST http://localhost:8000/api/v1/plans \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"title": "重构认证模块", "proposed_by": "ai_agent", "status": "pending_approval"}'
 
 # 你审批通过
-curl -X POST http://localhost:8000/api/v1/plans/1/approve
+curl -X POST http://localhost:8000/api/v1/plans/1/approve \
+  -H "Authorization: Bearer <token>"
+
+# 或拒绝并说明原因
+curl -X POST "http://localhost:8000/api/v1/plans/1/reject?reason=优先级不足" \
+  -H "Authorization: Bearer <token>"
 ```
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 后端 | Python 3.11, FastAPI, SQLAlchemy 2.0 (async), SQLite, JWT |
+| 前端 | React 19, TypeScript, Ant Design 6, Vite, React Router 7 |
+| MCP | FastMCP, httpx |
+| 部署 | Docker, Docker Compose, Nginx |

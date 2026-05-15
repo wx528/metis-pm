@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
 
 from src.core.database import Base
@@ -14,4 +14,4 @@ class ActivityLog(Base):
     old_value = Column(JSON, nullable=True)           # 变更前
     new_value = Column(JSON, nullable=True)           # 变更后
     actor = Column(String(20), default="user")        # user | ai_agent
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

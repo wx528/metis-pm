@@ -1,6 +1,6 @@
 # 014 — MCP get_server_credentials 调用错误端点，泄露凭据
 
-> 优先级: P0 | 类型: security | 状态: open
+> 优先级: P0 | 类型: security | 状态: **fixed**
 
 ## 问题描述
 

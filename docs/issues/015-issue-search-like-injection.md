@@ -1,6 +1,6 @@
 # 015 — Issue 列表搜索 SQL 注入风险
 
-> 优先级: P1 | 类型: security | 状态: open
+> 优先级: P1 | 类型: security | 状态: **fixed**
 
 ## 问题描述
 

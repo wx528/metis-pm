@@ -1,6 +1,6 @@
 import enum
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
@@ -20,11 +20,11 @@ class PlanItem(Base):
     plan_id = Column(Integer, ForeignKey("plans.id"), nullable=False)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(String(20), default="pending")  # pending | in_progress | done | blocked
+    status = Column(Enum(PlanItemStatus), default=PlanItemStatus.PENDING)
     sort_order = Column(Integer, default=0)
     completed_by = Column(String(20), nullable=True)   # user | ai_agent | null
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     plan = relationship("Plan", back_populates="plan_items")

@@ -1,6 +1,6 @@
 import enum
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Text, DateTime, Enum
 
 from src.core.database import Base
 
@@ -37,10 +37,10 @@ class Server(Base):
     username = Column(String(100), nullable=True)
     password = Column(String(200), nullable=True)       # 明文存储（仅本地/内网）
     ssh_key = Column(Text, nullable=True)               # SSH 私钥
-    server_type = Column(String(20), default="other")   # web | db | cache | worker | other
-    status = Column(String(20), default="active")       # active | maintenance | offline | decommissioned
-    environment = Column(String(20), default="development")  # production | staging | development
+    server_type = Column(Enum(ServerType), default=ServerType.OTHER)
+    status = Column(Enum(ServerStatus), default=ServerStatus.ACTIVE)
+    environment = Column(Enum(ServerEnvironment), default=ServerEnvironment.DEVELOPMENT)
     labels = Column(String(500), nullable=True)         # 逗号分隔
     last_checked_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

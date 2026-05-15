@@ -1,6 +1,6 @@
 # 011 — 所有 Model 的 datetime.utcnow 无时区
 
-> 优先级: P1 | 类型: bug | 状态: open
+> 优先级: P1 | 类型: bug | 状态: **fixed**
 
 ## 问题描述
 

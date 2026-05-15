@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
@@ -52,8 +52,8 @@ class Issue(Base):
     deferred_to_milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True)  # 推迟到哪个阶段
     deferred_reason = Column(Text, nullable=True)   # 推迟原因
     parent_id = Column(Integer, ForeignKey("issues.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     closed_at = Column(DateTime, nullable=True)
 
     milestone = relationship("Milestone", back_populates="issues", foreign_keys=[milestone_id])

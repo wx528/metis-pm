@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, asc
 from sqlalchemy.orm import selectinload
 
 from src.core.dependencies import get_db
@@ -28,6 +28,7 @@ async def list_issues(
     milestone_id: Optional[int] = Query(None),
     deferred_only: bool = Query(False),
     search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query("created_at_desc"),
 ):
     """问题列表（支持筛选和搜索）"""
     query = select(Issue)
@@ -46,13 +47,23 @@ async def list_issues(
     if deferred_only:
         query = query.where(Issue.status == IssueStatus.DEFERRED)
     if search:
-        query = query.where(Issue.title.contains(search) | Issue.description.contains(search))
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(Issue.title.contains(escaped, autoescape=False) | Issue.description.contains(escaped, autoescape=False))
 
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar()
 
-    query = query.order_by(desc(Issue.created_at)).offset(skip).limit(limit)
+    sort_map = {
+        "created_at_desc": desc(Issue.created_at),
+        "created_at_asc": asc(Issue.created_at),
+        "updated_at_desc": desc(Issue.updated_at),
+        "updated_at_asc": asc(Issue.updated_at),
+        "priority_asc": asc(Issue.priority),
+        "priority_desc": desc(Issue.priority),
+    }
+    order_clause = sort_map.get(sort_by, desc(Issue.created_at))
+    query = query.order_by(order_clause).offset(skip).limit(limit)
     result = await db.execute(query)
     items = result.scalars().all()
 
@@ -60,8 +71,7 @@ async def list_issues(
 
 
 @router.post("", response_model=IssueRead, status_code=201)
-async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db)):
-    """创建问题"""
+async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     issue = Issue(**data.model_dump())
     db.add(issue)
     await db.commit()
@@ -69,7 +79,8 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db)):
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,
-        action="created", actor=issue.source or "user",
+        actor=user["sub"],
+        action="created",
         new_value={"title": issue.title, "priority": issue.priority, "status": issue.status},
     )
     return issue
@@ -88,8 +99,7 @@ async def get_issue(issue_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{issue_id}", response_model=IssueRead)
-async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depends(get_db)):
-    """更新问题"""
+async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Issue).where(Issue.id == issue_id))
     issue = result.scalar_one_or_none()
     if not issue:
@@ -122,7 +132,7 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,
-        action=action, actor="user",
+        action=action, actor=user["sub"],
         old_value=old_values,
         new_value={k: getattr(issue, k) for k in old_values.keys()},
     )
@@ -130,8 +140,7 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
 
 
 @router.delete("/{issue_id}", status_code=204)
-async def delete_issue(issue_id: int, db: AsyncSession = Depends(get_db)):
-    """删除问题"""
+async def delete_issue(issue_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Issue).where(Issue.id == issue_id))
     issue = result.scalar_one_or_none()
     if not issue:
@@ -139,7 +148,7 @@ async def delete_issue(issue_id: int, db: AsyncSession = Depends(get_db)):
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,
-        action="deleted", actor="user",
+        action="deleted", actor=user["sub"],
         old_value={"title": issue.title},
     )
 
@@ -154,8 +163,8 @@ async def defer_issue(
     deferred_to_milestone_id: int,
     deferred_reason: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
 ):
-    """将 issue 标记为暂缓，推迟到指定阶段"""
     result = await db.execute(select(Issue).where(Issue.id == issue_id))
     issue = result.scalar_one_or_none()
     if not issue:
@@ -171,7 +180,7 @@ async def defer_issue(
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,
-        action="deferred", actor="user",
+        action="deferred", actor=user["sub"],
         old_value={"status": old_status},
         new_value={"status": issue.status, "deferred_to_milestone_id": deferred_to_milestone_id, "reason": deferred_reason},
     )
@@ -179,8 +188,7 @@ async def defer_issue(
 
 
 @router.post("/{issue_id}/comments", response_model=CommentRead, status_code=201)
-async def add_comment(issue_id: int, data: CommentCreate, db: AsyncSession = Depends(get_db)):
-    """添加评论"""
+async def add_comment(issue_id: int, data: CommentCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Issue).where(Issue.id == issue_id))
     issue = result.scalar_one_or_none()
     if not issue:
@@ -193,7 +201,7 @@ async def add_comment(issue_id: int, data: CommentCreate, db: AsyncSession = Dep
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,
-        action="commented", actor=data.author or "user",
+        action="commented", actor=user["sub"],
         new_value={"comment_id": comment.id, "content": data.content[:100]},
     )
     return comment

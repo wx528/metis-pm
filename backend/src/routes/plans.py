@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func, case
 from sqlalchemy.orm import selectinload
 
 from src.core.dependencies import get_db
@@ -10,7 +10,7 @@ from src.core.activity import log_activity
 from src.models.plan import Plan, PlanStatus
 from src.models.plan_item import PlanItem, PlanItemStatus
 from src.schemas.plan import (
-    PlanCreate, PlanUpdate, PlanRead, PlanReadWithItems,
+    PlanCreate, PlanUpdate, PlanRead, PlanReadWithItems, PlanReadWithStats,
     PlanItemCreate, PlanItemUpdate, PlanItemRead,
 )
 from src.routes.auth import get_current_user
@@ -20,7 +20,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # ── Plans ──────────────────────────────────────────
 
-@router.get("", response_model=List[PlanRead])
+@router.get("", response_model=List[PlanReadWithStats])
 async def list_plans(
     db: AsyncSession = Depends(get_db),
     status: Optional[str] = Query(None),
@@ -30,12 +30,37 @@ async def list_plans(
     if status:
         query = query.where(Plan.status == status)
     result = await db.execute(query)
-    return result.scalars().all()
+    plans = result.scalars().all()
+
+    out = []
+    for p in plans:
+        stats = await db.execute(
+            select(
+                func.count(PlanItem.id).label("total"),
+                func.sum(case((PlanItem.status == PlanItemStatus.DONE, 1), else_=0)).label("done"),
+            ).where(PlanItem.plan_id == p.id)
+        )
+        row = stats.one()
+        out.append(PlanReadWithStats(
+            id=p.id,
+            title=p.title,
+            description=p.description,
+            status=p.status,
+            proposed_by=p.proposed_by,
+            approved_by=p.approved_by,
+            approved_at=p.approved_at,
+            reject_reason=p.reject_reason,
+            current_milestone_id=p.current_milestone_id,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+            item_count=row.total or 0,
+            item_done_count=row.done or 0,
+        ))
+    return out
 
 
 @router.post("", response_model=PlanRead, status_code=201)
-async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db)):
-    """创建计划"""
+async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     plan = Plan(**data.model_dump())
     db.add(plan)
     await db.commit()
@@ -43,7 +68,8 @@ async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db)):
 
     await log_activity(
         db, entity_type="plan", entity_id=plan.id,
-        action="created", actor=plan.proposed_by or "user",
+        actor=user["sub"],
+        action="created",
         new_value={"title": plan.title, "status": plan.status, "proposed_by": plan.proposed_by},
     )
     return plan
@@ -62,8 +88,7 @@ async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{plan_id}", response_model=PlanRead)
-async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends(get_db)):
-    """更新计划"""
+async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -80,7 +105,7 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
 
     await log_activity(
         db, entity_type="plan", entity_id=plan.id,
-        action="updated", actor="user",
+        action="updated", actor=user["sub"],
         old_value=old_values,
         new_value={k: getattr(plan, k) for k in old_values.keys()},
     )
@@ -88,8 +113,7 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
 
 
 @router.delete("/{plan_id}", status_code=204)
-async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
-    """删除计划"""
+async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -97,7 +121,7 @@ async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
     await log_activity(
         db, entity_type="plan", entity_id=plan.id,
-        action="deleted", actor="user",
+        action="deleted", actor=user["sub"],
         old_value={"title": plan.title},
     )
 
@@ -109,8 +133,7 @@ async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 # ── Approval ───────────────────────────────────────
 
 @router.post("/{plan_id}/approve", response_model=PlanRead)
-async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
-    """审批通过计划"""
+async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -120,7 +143,7 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
     old_status = plan.status
     plan.status = PlanStatus.ACTIVE
-    plan.approved_by = "user"
+    plan.approved_by = user["sub"]
     plan.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
@@ -128,7 +151,7 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
     await log_activity(
         db, entity_type="plan", entity_id=plan.id,
-        action="approved", actor="user",
+        action="approved", actor=user["sub"],
         old_value={"status": old_status},
         new_value={"status": plan.status, "approved_by": plan.approved_by},
     )
@@ -136,8 +159,7 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{plan_id}/reject", response_model=PlanRead)
-async def reject_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
-    """拒绝计划"""
+async def reject_plan(plan_id: int, reason: Optional[str] = None, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -147,17 +169,16 @@ async def reject_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
     old_status = plan.status
     plan.status = PlanStatus.ABANDONED
-    plan.approved_by = "user"
-    plan.approved_at = datetime.now(timezone.utc)
+    plan.reject_reason = reason
 
     await db.commit()
     await db.refresh(plan)
 
     await log_activity(
         db, entity_type="plan", entity_id=plan.id,
-        action="rejected", actor="user",
+        action="rejected", actor=user["sub"],
         old_value={"status": old_status},
-        new_value={"status": plan.status, "approved_by": plan.approved_by},
+        new_value={"status": plan.status, "reject_reason": reason},
     )
     return plan
 
@@ -174,8 +195,7 @@ async def list_plan_items(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{plan_id}/items", response_model=PlanItemRead, status_code=201)
-async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession = Depends(get_db)):
-    """添加计划项"""
+async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     plan_result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = plan_result.scalar_one_or_none()
     if not plan:
@@ -188,7 +208,7 @@ async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession 
 
     await log_activity(
         db, entity_type="plan_item", entity_id=item.id,
-        action="created", actor="user",
+        action="created", actor=user["sub"],
         new_value={"title": item.title, "plan_id": plan_id},
     )
     return item
@@ -196,9 +216,8 @@ async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession 
 
 @router.put("/{plan_id}/items/{item_id}", response_model=PlanItemRead)
 async def update_plan_item(
-    plan_id: int, item_id: int, data: PlanItemUpdate, db: AsyncSession = Depends(get_db)
+    plan_id: int, item_id: int, data: PlanItemUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)
 ):
-    """更新计划项"""
     result = await db.execute(
         select(PlanItem).where(PlanItem.id == item_id, PlanItem.plan_id == plan_id)
     )
@@ -220,7 +239,7 @@ async def update_plan_item(
 
     await log_activity(
         db, entity_type="plan_item", entity_id=item.id,
-        action=action, actor=data.completed_by or "user",
+        action=action, actor=user["sub"],
         old_value={"status": old_status},
         new_value={"status": item.status, "completed_by": item.completed_by},
     )
@@ -228,8 +247,7 @@ async def update_plan_item(
 
 
 @router.delete("/{plan_id}/items/{item_id}", status_code=204)
-async def delete_plan_item(plan_id: int, item_id: int, db: AsyncSession = Depends(get_db)):
-    """删除计划项"""
+async def delete_plan_item(plan_id: int, item_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(
         select(PlanItem).where(PlanItem.id == item_id, PlanItem.plan_id == plan_id)
     )
@@ -239,7 +257,7 @@ async def delete_plan_item(plan_id: int, item_id: int, db: AsyncSession = Depend
 
     await log_activity(
         db, entity_type="plan_item", entity_id=item.id,
-        action="deleted", actor="user",
+        action="deleted", actor=user["sub"],
         old_value={"title": item.title},
     )
 

@@ -27,7 +27,7 @@ async def list_servers(
     if server_type:
         query = query.where(Server.server_type == server_type)
     result = await db.execute(query)
-    return result.scalars().all()
+    return [ServerRead.from_orm_with_flags(s) for s in result.scalars().all()]
 
 
 @router.post("", response_model=ServerRead, status_code=201)
@@ -37,7 +37,7 @@ async def create_server(data: ServerCreate, db: AsyncSession = Depends(get_db)):
     db.add(server)
     await db.commit()
     await db.refresh(server)
-    return server
+    return ServerRead.from_orm_with_flags(server)
 
 
 @router.get("/{server_id}", response_model=ServerRead)
@@ -47,7 +47,7 @@ async def get_server(server_id: int, db: AsyncSession = Depends(get_db)):
     server = result.scalar_one_or_none()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
-    return server
+    return ServerRead.from_orm_with_flags(server)
 
 
 @router.put("/{server_id}", response_model=ServerRead)
@@ -64,7 +64,7 @@ async def update_server(server_id: int, data: ServerUpdate, db: AsyncSession = D
 
     await db.commit()
     await db.refresh(server)
-    return server
+    return ServerRead.from_orm_with_flags(server)
 
 
 @router.delete("/{server_id}", status_code=204)
@@ -101,4 +101,4 @@ async def check_server(server_id: int, db: AsyncSession = Depends(get_db)):
     server.last_checked_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(server)
-    return server
+    return ServerRead.from_orm_with_flags(server)

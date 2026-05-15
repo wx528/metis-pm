@@ -47,10 +47,27 @@ export interface IssueUpdate {
   milestone_id?: number;
 }
 
+export interface Comment {
+  id: number;
+  issue_id: number;
+  author?: string;
+  content: string;
+  created_at: string;
+}
+
+export interface IssueWithComments extends Issue {
+  comments: Comment[];
+}
+
+export interface CommentCreate {
+  content: string;
+  author?: string;
+}
+
 export const issuesApi = {
   list: (params?: Record<string, any>) =>
     api.get<IssueListResponse>("/issues", { params }),
-  get: (id: number) => api.get<Issue>(`/issues/${id}`),
+  get: (id: number) => api.get<IssueWithComments>(`/issues/${id}`),
   create: (data: IssueCreate) => api.post<Issue>("/issues", data),
   update: (id: number, data: IssueUpdate) => api.put<Issue>(`/issues/${id}`, data),
   remove: (id: number) => api.delete(`/issues/${id}`),
@@ -58,4 +75,6 @@ export const issuesApi = {
     api.post<Issue>(`/issues/${id}/defer`, null, {
       params: { deferred_to_milestone_id: milestoneId, deferred_reason: reason },
     }),
+  addComment: (issueId: number, data: CommentCreate) =>
+    api.post<Comment>(`/issues/${issueId}/comments`, data),
 };

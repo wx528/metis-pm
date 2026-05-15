@@ -12,20 +12,47 @@ from src.routes.auth import get_current_user
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
-@router.get("", response_model=List[MilestoneRead])
+@router.get("", response_model=List[MilestoneReadWithStats])
 async def list_milestones(
     db: AsyncSession = Depends(get_db),
     status: Optional[str] = Query(None),
     phase: Optional[str] = Query(None),
 ):
-    """里程碑列表"""
+    """里程碑列表（含统计）"""
     query = select(Milestone).order_by(desc(Milestone.created_at))
     if status:
         query = query.where(Milestone.status == status)
     if phase:
         query = query.where(Milestone.phase == phase)
     result = await db.execute(query)
-    return result.scalars().all()
+    milestones = result.scalars().all()
+
+    out = []
+    for m in milestones:
+        stats = await db.execute(
+            select(
+                func.count(Issue.id).label("total"),
+                func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+                func.sum(case((Issue.status == IssueStatus.CLOSED, 1), else_=0)).label("closed"),
+                func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
+            ).where(Issue.milestone_id == m.id)
+        )
+        row = stats.one()
+        out.append(MilestoneReadWithStats(
+            id=m.id,
+            title=m.title,
+            description=m.description,
+            phase=m.phase,
+            status=m.status,
+            due_date=m.due_date,
+            created_at=m.created_at,
+            updated_at=m.updated_at,
+            total_issues=row.total or 0,
+            open_issues=row.open or 0,
+            closed_issues=row.closed or 0,
+            deferred_issues=row.deferred or 0,
+        ))
+    return out
 
 
 @router.post("", response_model=MilestoneRead, status_code=201)
@@ -98,6 +125,16 @@ async def delete_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)
     milestone = result.scalar_one_or_none()
     if not milestone:
         raise HTTPException(status_code=404, detail="Milestone not found")
+
+    linked = await db.execute(
+        select(func.count(Issue.id)).where(Issue.milestone_id == milestone_id)
+    )
+    if linked.scalar() > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete milestone with linked issues. Remove or reassign issues first.",
+        )
+
     await db.delete(milestone)
     await db.commit()
     return None

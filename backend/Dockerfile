@@ -14,7 +14,7 @@ RUN mkdir -p /data
 
 # Environment
 ENV PYTHONPATH=/app
-ENV DATABASE_URL=sqlite+aiosqlite:///data/project_manager.db
+ENV DATABASE_URL=sqlite+aiosqlite:////data/project_manager.db
 
 EXPOSE 8000
 

@@ -16,17 +16,20 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     token: str
+    sub: str
+    role: str
 
 
 class MeResponse(BaseModel):
-    role: str = "admin"
+    sub: str
+    role: str
 
 
-def create_token() -> str:
-    """创建 JWT token（有效期 24 小时）"""
+def create_token(sub: str, role: str) -> str:
     now = datetime.now(timezone.utc)
     payload = {
-        "sub": "admin",
+        "sub": sub,
+        "role": role,
         "iat": now,
         "exp": now + timedelta(hours=24),
     }
@@ -34,7 +37,6 @@ def create_token() -> str:
 
 
 def verify_token(credentials: HTTPAuthorizationCredentials | None) -> dict:
-    """验证 JWT token"""
     if not credentials:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     try:
@@ -52,14 +54,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
 
 @router.post("/login", response_model=LoginResponse)
 async def login(data: LoginRequest):
-    """登录"""
-    if data.password != settings.ADMIN_PASSWORD:
+    identity = settings.resolve_identity(data.password)
+    if not identity:
         raise HTTPException(status_code=401, detail="Invalid password")
-    token = create_token()
-    return {"token": token}
+    sub, role = identity
+    token = create_token(sub, role)
+    return {"token": token, "sub": sub, "role": role}
 
 
 @router.get("/me", response_model=MeResponse)
 async def me(user: dict = Depends(get_current_user)):
-    """当前用户信息"""
-    return {"role": "admin"}
+    return {"sub": user.get("sub", "unknown"), "role": user.get("role", "unknown")}

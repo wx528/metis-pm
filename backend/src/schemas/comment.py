@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class CommentCreate(BaseModel):
     content: str = Field(..., min_length=1)
-    author: str = Field(default="anonymous", max_length=100)
+    author: str = Field(default="user", max_length=100)
 
 
 class CommentRead(BaseModel):

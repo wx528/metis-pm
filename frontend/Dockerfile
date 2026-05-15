@@ -1,5 +1,8 @@
 FROM node:20-alpine AS builder
 
+ARG APP_VERSION=0.0.0
+ENV APP_VERSION=$APP_VERSION
+
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --registry=https://mirrors.cloud.tencent.com/npm/

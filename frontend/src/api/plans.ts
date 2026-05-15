@@ -21,10 +21,13 @@ export interface Plan {
   proposed_by: string;
   approved_by?: string;
   approved_at?: string;
+  reject_reason?: string;
   current_milestone_id?: number;
   created_at: string;
   updated_at: string;
   plan_items?: PlanItem[];
+  item_count?: number;
+  item_done_count?: number;
 }
 
 export const plansApi = {

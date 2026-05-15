@@ -1,6 +1,6 @@
 # Issues 清单
 
-> 来源：项目评审 | 日期：2026-05-15
+> 来源：项目评审 | 日期：2026-05-15（第二轮：2026-05-16）
 
 | # | 标题 | 优先级 | 类型 | 状态 |
 |---|------|--------|------|------|
@@ -14,6 +14,16 @@
 | 008 | 前端问题汇总（6个子项） | P1-P2 | bug/ux | **fixed** |
 | 009 | MCP Server 没有身份验证 | P1 | security | **fixed** |
 | 010 | 代码质量问题（5个子项） | P2 | code-quality | **fixed** |
+| 011 | 所有 Model 的 datetime.utcnow 无时区 | P1 | bug | **fixed** |
+| 012 | Plan/PlanItem/Milestone/Server 的 status 列用 String 而非 Enum | P1 | code-quality | **fixed** |
+| 013 | 测试全部未认证，无法通过 | P1 | bug | **fixed** |
+| 014 | MCP get_server_credentials 调用错误端点，凭据泄露 | P0 | security | **fixed** |
+| 015 | Issue 列表搜索 LIKE 通配符注入 | P1 | security | **fixed** |
+| 016 | Milestone 删除未检查关联 Issue | P1 | data-integrity | **fixed** |
+| 017 | 前端 Milestones 页面 N+1 查询 | P2 | performance | **fixed** |
+| 018 | 前端 Issues 列表无分页 | P2 | ux | **fixed** |
+| 019 | useAuth hook 未被使用 | P2 | code-quality | **fixed** |
+| 020 | PlanItem/Plan/Milestone schema 缺少枚举校验 | P1 | bug | **fixed** |
 
 ## 修复详情
 

@@ -13,14 +13,8 @@ export default function Milestones() {
   const fetch = async () => {
     setLoading(true);
     try {
-      const listRes = await milestonesApi.list();
-      const withStats = await Promise.all(
-        listRes.data.map(async (m) => {
-          const detailRes = await milestonesApi.get(m.id);
-          return detailRes.data;
-        })
-      );
-      setMilestones(withStats);
+      const res = await milestonesApi.list();
+      setMilestones(res.data);
     } finally {
       setLoading(false);
     }

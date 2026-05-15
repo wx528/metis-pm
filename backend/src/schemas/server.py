@@ -43,8 +43,8 @@ class ServerRead(BaseModel):
     ip_address: Optional[str] = None
     port: Optional[int] = None
     username: Optional[str] = None
-    password: Optional[str] = None
-    ssh_key: Optional[str] = None
+    has_password: bool = False
+    has_ssh_key: bool = False
     server_type: str
     status: str
     environment: str
@@ -55,6 +55,26 @@ class ServerRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @classmethod
+    def from_orm_with_flags(cls, server: "Server") -> "ServerRead":
+        return cls(
+            id=server.id,
+            name=server.name,
+            description=server.description,
+            ip_address=server.ip_address,
+            port=server.port,
+            username=server.username,
+            has_password=bool(server.password),
+            has_ssh_key=bool(server.ssh_key),
+            server_type=server.server_type,
+            status=server.status,
+            environment=server.environment,
+            labels=server.labels,
+            last_checked_at=server.last_checked_at,
+            created_at=server.created_at,
+            updated_at=server.updated_at,
+        )
 
 
 class ServerCredentials(BaseModel):

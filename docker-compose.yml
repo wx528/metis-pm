@@ -6,16 +6,19 @@ services:
       - "8000:8000"
     volumes:
       - sqlite_data:/data
+    env_file:
+      - .env
     environment:
-      - SECRET_KEY=${SECRET_KEY}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - DATABASE_URL=sqlite+aiosqlite:////data/project_manager.db
-      - CORS_ORIGINS=http://localhost:8080
+      - CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
       - DEBUG=false
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        APP_VERSION: "0.3.0"
     container_name: pm-frontend
     ports:
       - "8080:80"

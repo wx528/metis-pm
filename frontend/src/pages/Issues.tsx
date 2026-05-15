@@ -32,12 +32,17 @@ export default function Issues() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [filters, setFilters] = useState<Record<string, any>>({});
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [sortBy, setSortBy] = useState<string>("created_at_desc");
 
   const fetchIssues = async () => {
     setLoading(true);
     try {
-      const res = await issuesApi.list({ ...filters, limit: 100 });
+      const res = await issuesApi.list({ ...filters, skip: (page - 1) * pageSize, limit: pageSize, sort_by: sortBy });
       setIssues(res.data.items);
+      setTotal(res.data.total);
     } finally {
       setLoading(false);
     }
@@ -51,7 +56,7 @@ export default function Issues() {
   useEffect(() => {
     fetchIssues();
     fetchMilestones();
-  }, [filters]);
+  }, [filters, page, pageSize, sortBy]);
 
   const handleCreate = async (values: any) => {
     try {
@@ -183,6 +188,19 @@ export default function Issues() {
             </Option>
           ))}
         </Select>
+        <Select
+          placeholder="排序"
+          style={{ width: 150 }}
+          value={sortBy}
+          onChange={(v) => setSortBy(v)}
+        >
+          <Option value="created_at_desc">最新创建</Option>
+          <Option value="created_at_asc">最早创建</Option>
+          <Option value="updated_at_desc">最新更新</Option>
+          <Option value="updated_at_asc">最早更新</Option>
+          <Option value="priority_asc">优先级 高→低</Option>
+          <Option value="priority_desc">优先级 低→高</Option>
+        </Select>
       </Space>
 
       <Table
@@ -190,7 +208,17 @@ export default function Issues() {
         columns={columns}
         dataSource={issues}
         loading={loading}
-        pagination={{ pageSize: 20 }}
+        pagination={{
+          current: page,
+          pageSize: pageSize,
+          total: total,
+          showSizeChanger: true,
+          showTotal: (t) => `共 ${t} 条`,
+          onChange: (p, ps) => {
+            setPage(p);
+            setPageSize(ps);
+          },
+        }}
       />
 
       <Modal

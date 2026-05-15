@@ -1,6 +1,6 @@
 # 012 — Plan/PlanItem/Milestone/Server 的 status 列用 String 而非 Enum
 
-> 优先级: P1 | 类型: code-quality | 状态: open
+> 优先级: P1 | 类型: code-quality | 状态: **fixed**
 
 ## 问题描述
 

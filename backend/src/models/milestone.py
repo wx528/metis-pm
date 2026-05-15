@@ -1,8 +1,14 @@
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date
+import enum
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Enum
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
+
+
+class MilestoneStatus(str, enum.Enum):
+    OPEN = "open"
+    CLOSED = "closed"
 
 
 class Milestone(Base):
@@ -11,10 +17,10 @@ class Milestone(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    phase = Column(String(50), nullable=True)      # 分期标识，如 "phase-1", "phase-2", "MVP"
-    status = Column(String(20), default="open")     # open, closed
+    phase = Column(String(50), nullable=True)
+    status = Column(Enum(MilestoneStatus), default=MilestoneStatus.OPEN)
     due_date = Column(Date, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     issues = relationship("Issue", back_populates="milestone", foreign_keys="Issue.milestone_id")

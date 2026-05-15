@@ -19,7 +19,7 @@ export interface MilestoneWithStats extends Milestone {
 }
 
 export const milestonesApi = {
-  list: (params?: Record<string, any>) => api.get<Milestone[]>("/milestones", { params }),
+  list: (params?: Record<string, any>) => api.get<MilestoneWithStats[]>("/milestones", { params }),
   get: (id: number) => api.get<MilestoneWithStats>(`/milestones/${id}`),
   create: (data: Partial<Milestone>) => api.post<Milestone>("/milestones", data),
   update: (id: number, data: Partial<Milestone>) => api.put<Milestone>(`/milestones/${id}`, data),

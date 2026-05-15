@@ -1,4 +1,4 @@
-"""
+﻿"""
 Project Manager MCP Server
 AI Coding Agent 通过 MCP 协议与本系统交互的工具入口
 
@@ -9,15 +9,16 @@ AI Coding Agent 通过 MCP 协议与本系统交互的工具入口
       "command": "python",
       "args": ["D:/AI-learning/tce_tiku/project_mananger_system/backend/mcp_server.py"],
       "env": {
-        "PM_API_URL": "http://localhost:8000",
-        "PM_TOKEN": "your-jwt-token"
+        "PM_API_URL": "http://localhost:8000/api/v1",
+        "PM_AGENT_PASSWORD": "CHANGE-ME"
       }
     }
   }
 }
 
-获取 Token：
-curl -X POST http://localhost:8000/api/v1/auth/login -H "Content-Type: application/json" -d '{"password":"admin"}'
+PM_AGENT_PASSWORD: 在 .env 的 AGENT_PASSWORDS 中配置，格式为 "agent_name:password"
+例如 AGENT_PASSWORDS=cline:CHANGE-ME,buddy:buddy-2026
+MCP Server 启动时会自动用 agent 密码登录获取 token
 """
 import os
 import sys
@@ -25,37 +26,60 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
 API_BASE = os.environ.get("PM_API_URL", "http://localhost:8000/api/v1")
-TOKEN = os.environ.get("PM_TOKEN", "")
+AGENT_PASSWORD = os.environ.get("PM_AGENT_PASSWORD", "")
+_token_cache: dict = {}
 
-if not TOKEN:
-    print("WARNING: PM_TOKEN environment variable is not set. MCP tools will fail with 401.", file=sys.stderr)
-    print(f"Get token: curl -X POST {API_BASE.replace('/api/v1', '')}/api/v1/auth/login -H 'Content-Type: application/json' -d '{{\"password\":\"admin\"}}'", file=sys.stderr)
+
+async def _ensure_token() -> str:
+    global _token_cache
+    if _token_cache.get("token"):
+        return _token_cache["token"]
+    if not AGENT_PASSWORD:
+        raise RuntimeError("PM_AGENT_PASSWORD not set. Configure it in MCP settings.")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{API_BASE}/auth/login",
+            json={"password": AGENT_PASSWORD},
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Login failed ({resp.status_code}): {resp.text}")
+        data = resp.json()
+        _token_cache["token"] = data["token"]
+        _token_cache["sub"] = data.get("sub", "unknown")
+        _token_cache["role"] = data.get("role", "unknown")
+        return _token_cache["token"]
+
+
+async def get_headers() -> dict:
+    token = await _ensure_token()
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
 
 mcp = FastMCP("project-manager")
-
-
-def get_headers():
-    return {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
 
 @mcp.tool()
 async def check_connection() -> str:
     """测试 MCP Server 与后端 API 的连接是否正常"""
-    if not TOKEN:
-        return "ERROR: PM_TOKEN not set. Please configure the token in MCP settings."
+    try:
+        headers = await get_headers()
+    except RuntimeError as e:
+        return f"ERROR: {e}"
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/auth/me", headers=get_headers())
+        resp = await client.get(f"{API_BASE}/auth/me", headers=headers)
         if resp.status_code == 200:
-            return f"Connected OK. API: {API_BASE}"
+            data = resp.json()
+            return f"Connected OK. Identity: {data.get('sub', '?')} (role={data.get('role', '?')})"
         elif resp.status_code == 401:
-            return f"ERROR: Token invalid or expired (401). Please get a new token."
+            _token_cache.clear()
+            return "ERROR: Token invalid or expired (401). Will re-login on next call."
         else:
             return f"ERROR: API returned {resp.status_code}. Is the backend running?"
 
@@ -71,11 +95,13 @@ async def create_issue(
     milestone_id: Optional[int] = None,
     labels: str = "",
 ) -> str:
-    """创建 issue，自动标记 source=ai_agent"""
+    """创建 issue，source 自动标记为当前 agent 身份"""
+    headers = await get_headers()
+    agent_name = _token_cache.get("sub", "ai_agent")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{API_BASE}/issues",
-            headers=get_headers(),
+            headers=headers,
             json={
                 "title": title,
                 "description": description,
@@ -115,7 +141,7 @@ async def list_issues(
         params["deferred_only"] = "true"
 
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/issues", headers=get_headers(), params=params)
+        resp = await client.get(f"{API_BASE}/issues", headers=await get_headers(), params=params)
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         data = resp.json()
@@ -134,7 +160,7 @@ async def update_issue_status(issue_id: int, status: str) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.put(
             f"{API_BASE}/issues/{issue_id}",
-            headers=get_headers(),
+            headers=await get_headers(),
             json={"status": status},
         )
         if resp.status_code >= 400:
@@ -149,7 +175,7 @@ async def update_issue_priority(issue_id: int, priority: str) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.put(
             f"{API_BASE}/issues/{issue_id}",
-            headers=get_headers(),
+            headers=await get_headers(),
             json={"priority": priority},
         )
         if resp.status_code >= 400:
@@ -167,7 +193,7 @@ async def defer_issue(issue_id: int, milestone_id: int, reason: str = "") -> str
             params["deferred_reason"] = reason
         resp = await client.post(
             f"{API_BASE}/issues/{issue_id}/defer",
-            headers=get_headers(),
+            headers=await get_headers(),
             params=params,
         )
         if resp.status_code >= 400:
@@ -179,11 +205,13 @@ async def defer_issue(issue_id: int, milestone_id: int, reason: str = "") -> str
 @mcp.tool()
 async def add_issue_comment(issue_id: int, content: str) -> str:
     """为 issue 添加评论"""
+    headers = await get_headers()
+    agent_name = _token_cache.get("sub", "ai_agent")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{API_BASE}/issues/{issue_id}/comments",
-            headers=get_headers(),
-            json={"content": content, "author": "ai_agent"},
+            headers=headers,
+            json={"content": content, "author": agent_name},
         )
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
@@ -196,14 +224,16 @@ async def add_issue_comment(issue_id: int, content: str) -> str:
 @mcp.tool()
 async def propose_plan(title: str, description: str = "") -> str:
     """提议一个新计划（状态为 pending_approval，等待用户审批）"""
+    headers = await get_headers()
+    agent_name = _token_cache.get("sub", "ai_agent")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{API_BASE}/plans",
-            headers=get_headers(),
+            headers=headers,
             json={
                 "title": title,
                 "description": description,
-                "proposed_by": "ai_agent",
+                "proposed_by": agent_name,
                 "status": "pending_approval",
             },
         )
@@ -220,7 +250,7 @@ async def list_plans(status: Optional[str] = None) -> str:
     if status:
         params["status"] = status
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/plans", headers=get_headers(), params=params)
+        resp = await client.get(f"{API_BASE}/plans", headers=await get_headers(), params=params)
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         items = resp.json()
@@ -235,9 +265,10 @@ async def list_plans(status: Optional[str] = None) -> str:
 @mcp.tool()
 async def update_plan_progress(plan_id: int, item_title: str, status: str = "done") -> str:
     """更新计划项进度。如果 plan_item 不存在则自动创建。"""
+    headers = await get_headers()
+    agent_name = _token_cache.get("sub", "ai_agent")
     async with httpx.AsyncClient() as client:
-        # 先获取 plan 的所有 items
-        resp = await client.get(f"{API_BASE}/plans/{plan_id}/items", headers=get_headers())
+        resp = await client.get(f"{API_BASE}/plans/{plan_id}/items", headers=headers)
         if resp.status_code >= 400:
             return f"Error getting plan items: {resp.status_code}"
         items = resp.json()
@@ -253,11 +284,11 @@ async def update_plan_progress(plan_id: int, item_title: str, status: str = "don
             # 更新现有 item
             resp = await client.put(
                 f"{API_BASE}/plans/{plan_id}/items/{target_item['id']}",
-                headers=get_headers(),
+                headers=headers,
                 json={
                     "status": status,
-                    "completed_by": "ai_agent" if status == "done" else None,
-                    "completed_at": datetime.utcnow().isoformat() if status == "done" else None,
+                    "completed_by": agent_name if status == "done" else None,
+                    "completed_at": datetime.now(timezone.utc).isoformat() if status == "done" else None,
                 },
             )
             if resp.status_code >= 400:
@@ -267,7 +298,7 @@ async def update_plan_progress(plan_id: int, item_title: str, status: str = "don
             # 创建新 item
             resp = await client.post(
                 f"{API_BASE}/plans/{plan_id}/items",
-                headers=get_headers(),
+                headers=headers,
                 json={"title": item_title, "status": status},
             )
             if resp.status_code >= 400:
@@ -281,7 +312,7 @@ async def update_plan_progress(plan_id: int, item_title: str, status: str = "don
 async def list_milestones() -> str:
     """查询里程碑/阶段列表"""
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/milestones", headers=get_headers())
+        resp = await client.get(f"{API_BASE}/milestones", headers=await get_headers())
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         items = resp.json()
@@ -300,7 +331,7 @@ async def list_milestones() -> str:
 async def list_servers() -> str:
     """查询服务器列表"""
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/servers", headers=get_headers())
+        resp = await client.get(f"{API_BASE}/servers", headers=await get_headers())
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         items = resp.json()
@@ -314,18 +345,20 @@ async def list_servers() -> str:
 
 @mcp.tool()
 async def get_server_credentials(server_id: int) -> str:
-    """获取服务器凭据（IP、用户名、密码）"""
+    """获取服务器凭据（IP、用户名、密码）。⚠️ 凭据将进入 AI 上下文，请谨慎使用。"""
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/servers/{server_id}", headers=get_headers())
+        resp = await client.get(f"{API_BASE}/servers/{server_id}/credentials", headers=await get_headers())
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         data = resp.json()
         return (
+            f"⚠️ WARNING: Credentials are now in your AI context. Handle with care.\n"
             f"Server: {data['name']}\n"
             f"IP: {data.get('ip_address', 'N/A')}:{data.get('port', 'N/A')}\n"
             f"Username: {data.get('username', 'N/A')}\n"
             f"Password: {data.get('password', 'N/A')}\n"
-            f"Status: {data['status']}"
+            f"SSH Key: {'(present)' if data.get('ssh_key') else 'N/A'}\n"
+            f"Status: see /servers/{server_id} for status info"
         )
 
 

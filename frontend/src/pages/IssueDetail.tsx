@@ -216,13 +216,22 @@ export default function IssueDetail() {
         <ActivityTimeline entityType="issue" entityId={issue.id} />
       </Card>
 
-      <Modal title="编辑 Issue" open={editOpen} onCancel={() => setEditOpen(false)} onOk={() => editForm.submit()}>
+      <Modal title="编辑 Issue" open={editOpen} onCancel={() => setEditOpen(false)} onOk={() => editForm.submit()} width={600}>
         <Form form={editForm} onFinish={handleUpdate} layout="vertical" initialValues={issue}>
           <Form.Item name="title" label="标题" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item name="issue_type" label="类型">
+            <Select>
+              <Option value="bug">bug</Option>
+              <Option value="feature">feature</Option>
+              <Option value="task">task</Option>
+              <Option value="improvement">improvement</Option>
+              <Option value="documentation">documentation</Option>
+            </Select>
           </Form.Item>
           <Form.Item name="status" label="状态">
             <Select>
@@ -240,6 +249,21 @@ export default function IssueDetail() {
               <Option value="P2">P2</Option>
               <Option value="P3">P3</Option>
             </Select>
+          </Form.Item>
+          <Form.Item name="milestone_id" label="所属 Milestone">
+            <Select allowClear placeholder="选择 Milestone">
+              {milestones.map((m) => (
+                <Option key={m.id} value={m.id}>
+                  {m.title}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="assignee" label="负责人">
+            <Input placeholder="指定负责人" />
+          </Form.Item>
+          <Form.Item name="labels" label="标签">
+            <Input placeholder="逗号分隔，如: backend,urgent" />
           </Form.Item>
         </Form>
       </Modal>

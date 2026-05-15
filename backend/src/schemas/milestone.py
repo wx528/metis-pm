@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from typing import Optional, Literal
+from typing import Optional
 from pydantic import BaseModel, Field
 
-MilestoneStatusType = Literal["open", "closed"]
+from src.models.milestone import MilestoneStatus
 
 
 class MilestoneCreate(BaseModel):
@@ -16,7 +16,7 @@ class MilestoneUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     phase: Optional[str] = None
-    status: Optional[MilestoneStatusType] = None
+    status: Optional[MilestoneStatus] = None
     due_date: Optional[date] = None
 
 
@@ -25,7 +25,7 @@ class MilestoneRead(BaseModel):
     title: str
     description: Optional[str] = None
     phase: Optional[str] = None
-    status: MilestoneStatusType
+    status: MilestoneStatus
     due_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime

@@ -1,21 +1,17 @@
 from datetime import datetime
-from typing import List, Optional, Literal
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from src.schemas.comment import CommentRead
-
-Priority = Literal["P0", "P1", "P2", "P3"]
-IssueType = Literal["bug", "feature", "task", "improvement", "documentation"]
-IssueStatus = Literal["open", "in_progress", "review", "deferred", "closed", "cancelled"]
-IssueSource = Literal["user", "ai_agent", "collaborative"]
+from src.models.issue import IssueType, IssueStatus, IssuePriority, IssueSource
 
 
 class IssueCreate(BaseModel):
     title: str = Field(..., max_length=200)
     description: Optional[str] = None
-    issue_type: IssueType = "task"
-    status: IssueStatus = "open"
-    priority: Priority = "P2"
-    source: IssueSource = "user"
+    issue_type: IssueType = IssueType.TASK
+    status: IssueStatus = IssueStatus.OPEN
+    priority: IssuePriority = IssuePriority.P2
+    source: IssueSource = IssueSource.USER
     assignee: Optional[str] = None
     labels: Optional[str] = None
     milestone_id: Optional[int] = None
@@ -29,7 +25,7 @@ class IssueUpdate(BaseModel):
     description: Optional[str] = None
     issue_type: Optional[IssueType] = None
     status: Optional[IssueStatus] = None
-    priority: Optional[Priority] = None
+    priority: Optional[IssuePriority] = None
     source: Optional[IssueSource] = None
     assignee: Optional[str] = None
     labels: Optional[str] = None

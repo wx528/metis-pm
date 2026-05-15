@@ -1,10 +1,9 @@
 from datetime import datetime
-from typing import Optional, List, Literal
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
-PlanStatusType = Literal["draft", "pending_approval", "active", "completed", "abandoned"]
-PlanSourceType = Literal["user", "ai_agent", "collaborative"]
-PlanItemStatusType = Literal["pending", "in_progress", "done", "blocked"]
+from src.models.plan import PlanStatus, PlanSource
+from src.models.plan_item import PlanItemStatus
 
 
 class PlanItemRead(BaseModel):
@@ -12,7 +11,7 @@ class PlanItemRead(BaseModel):
     plan_id: int
     title: str
     description: Optional[str] = None
-    status: PlanItemStatusType
+    status: PlanItemStatus
     sort_order: int
     completed_by: Optional[str] = None
     completed_at: Optional[datetime] = None
@@ -26,14 +25,14 @@ class PlanItemRead(BaseModel):
 class PlanItemCreate(BaseModel):
     title: str = Field(..., max_length=200)
     description: Optional[str] = None
-    status: PlanItemStatusType = "pending"
+    status: PlanItemStatus = PlanItemStatus.PENDING
     sort_order: int = 0
 
 
 class PlanItemUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[PlanItemStatusType] = None
+    status: Optional[PlanItemStatus] = None
     sort_order: Optional[int] = None
     completed_by: Optional[str] = None
     completed_at: Optional[datetime] = None
@@ -42,15 +41,15 @@ class PlanItemUpdate(BaseModel):
 class PlanCreate(BaseModel):
     title: str = Field(..., max_length=200)
     description: Optional[str] = None
-    status: PlanStatusType = "draft"
-    proposed_by: PlanSourceType = "user"
+    status: PlanStatus = PlanStatus.DRAFT
+    proposed_by: PlanSource = PlanSource.USER
     current_milestone_id: Optional[int] = None
 
 
 class PlanUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[PlanStatusType] = None
+    status: Optional[PlanStatus] = None
     current_milestone_id: Optional[int] = None
 
 
@@ -58,8 +57,8 @@ class PlanRead(BaseModel):
     id: int
     title: str
     description: Optional[str] = None
-    status: PlanStatusType
-    proposed_by: PlanSourceType
+    status: PlanStatus
+    proposed_by: PlanSource
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     reject_reason: Optional[str] = None

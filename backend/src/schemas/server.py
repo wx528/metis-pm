@@ -1,10 +1,8 @@
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional
 from pydantic import BaseModel, Field
 
-ServerType = Literal["web", "db", "cache", "worker", "other"]
-ServerStatus = Literal["active", "maintenance", "offline", "decommissioned"]
-ServerEnvironment = Literal["production", "staging", "development"]
+from src.models.server import ServerType, ServerStatus, ServerEnvironment
 
 
 class ServerCreate(BaseModel):
@@ -15,9 +13,9 @@ class ServerCreate(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     ssh_key: Optional[str] = None
-    server_type: ServerType = "other"
-    status: ServerStatus = "active"
-    environment: ServerEnvironment = "development"
+    server_type: ServerType = ServerType.OTHER
+    status: ServerStatus = ServerStatus.ACTIVE
+    environment: ServerEnvironment = ServerEnvironment.DEVELOPMENT
     labels: Optional[str] = None
 
 
@@ -45,9 +43,9 @@ class ServerRead(BaseModel):
     username: Optional[str] = None
     has_password: bool = False
     has_ssh_key: bool = False
-    server_type: str
-    status: str
-    environment: str
+    server_type: ServerType
+    status: ServerStatus
+    environment: ServerEnvironment
     labels: Optional[str] = None
     last_checked_at: Optional[datetime] = None
     created_at: datetime

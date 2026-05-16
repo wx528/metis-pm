@@ -1,4 +1,4 @@
-﻿﻿"""
+"""
 Project Manager MCP Server
 AI Coding Agent 通过 MCP 协议与本系统交互的工具入口
 

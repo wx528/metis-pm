@@ -21,6 +21,7 @@ async def list_notifications(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     unread_only: bool = Query(False),
+    project_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
@@ -29,6 +30,8 @@ async def list_notifications(
     query = select(Notification).where(Notification.recipient == recipient)
     if unread_only:
         query = query.where(Notification.read == False)
+    if project_id is not None:
+        query = query.where(Notification.project_id == project_id)
     query = query.order_by(desc(Notification.created_at))
 
     count_query = select(func.count()).select_from(query.subquery())
@@ -72,12 +75,12 @@ async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db), us
 async def mark_all_read(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     """全部标记已读"""
     recipient = user["sub"]
-    result = await db.execute(
-        select(Notification).where(Notification.recipient == recipient, Notification.read == False)
+    from sqlalchemy import update
+    await db.execute(
+        update(Notification)
+        .where(Notification.recipient == recipient, Notification.read == False)
+        .values(read=True)
     )
-    notifications = result.scalars().all()
-    for n in notifications:
-        n.read = True
     await db.commit()
     return None
 

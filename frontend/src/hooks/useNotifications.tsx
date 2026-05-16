@@ -77,19 +77,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!token) return;
 
     const API_BASE = import.meta.env.VITE_API_URL || "/api/v1";
-    const url = `${API_BASE}/notifications/stream?token=${token}`;
+    const url = `${API_BASE}/notifications/stream`;
 
-    // EventSource 不支持自定义 header，用 fetch + ReadableStream 替代
     let abortController: AbortController | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 1000; // 初始 1 秒
+    const MAX_RECONNECT_DELAY = 30000; // 最大 30 秒
 
     const connectSSE = () => {
       abortController = new AbortController();
-      fetch(url.replace("?token=", ""), {
+      fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
         signal: abortController.signal,
       })
         .then((response) => {
-          if (!response.ok || !response.body) return;
+          if (!response.ok || !response.body) {
+            // 认证失败不重连，其他错误重试
+            if (response.status === 401) return;
+            scheduleReconnect();
+            return;
+          }
+          // 连接成功，重置重连延迟
+          reconnectDelay = 1000;
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
 
@@ -97,7 +106,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             reader
               .read()
               .then(({ done, value }) => {
-                if (done) return;
+                if (done) {
+                  scheduleReconnect();
+                  return;
+                }
                 const text = decoder.decode(value, { stream: true });
                 // 解析 SSE 数据
                 const lines = text.split("\n");
@@ -115,20 +127,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 readChunk();
               })
               .catch(() => {
-                // connection lost, will reconnect
+                scheduleReconnect();
               });
           };
           readChunk();
         })
         .catch(() => {
-          // SSE connection failed, fall back to polling
+          scheduleReconnect();
         });
+    };
+
+    const scheduleReconnect = () => {
+      reconnectTimer = setTimeout(() => {
+        connectSSE();
+      }, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
     };
 
     connectSSE();
 
     return () => {
       abortController?.abort();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
     };
   }, []);
 

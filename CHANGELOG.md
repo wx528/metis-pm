@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.1] - 2026-05-17
+
+### v0.4.0 评审修复
+
+| 优先级 | 问题 | 修复 |
+|--------|------|------|
+| P0 | 删除项目无级联检查，产生孤立数据 | 有关联数据时返回 409 拒绝删除 |
+| P0 | Agent 创建 Issue 使用 `TASK_COMPLETED` 通知类型，语义错误 | 新增 `TASK_CREATED` 类型 |
+| P0 | SSE 断线无自动重连 | 添加指数退避重连（1s→2s→4s→…最大30s），401 不重连 |
+| P1 | Project 列表 N+1 查询 | 抽取 `_get_project_stats()` 公共函数，条件聚合优化 |
+| P1 | `mark_all_read` 逐条更新 | 改为批量 `UPDATE` 语句 |
+| P1 | `update_project` 允许修改 slug | `ProjectUpdate` schema 移除 `slug` 字段 |
+| P1 | 通知列表不支持 `project_id` 过滤 | `list_notifications` 新增 `project_id` 参数 |
+| P2 | Project 模型缺少 `notifications` relationship | 补充声明 |
+| P2 | ActivityLog 缺少 `project` relationship | 补充声明 |
+| P2 | 前端 SSE URL 拼接逻辑混乱 | 清理为直接构建 URL，去掉冗余 `replace` |
+| P2 | LIKE 搜索手动转义 `autoescape=False` | 改为 `autoescape=True`，使用 SQLAlchemy 内建安全机制 |
+
+---
+
 ## [0.4.0] - 2026-05-17
 
 ### Phase 4：多项目 + 通知 + SSE

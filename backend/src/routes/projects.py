@@ -25,6 +25,40 @@ async def _get_project_by_slug(db: AsyncSession, slug: str) -> Project:
     return project
 
 
+async def _get_project_stats(db: AsyncSession, project_id: int) -> dict:
+    """获取项目统计数据（单次查询优化）"""
+    # 使用条件聚合，一次查询获取所有统计
+    stats_result = await db.execute(
+        select(
+            func.count(Issue.id).label("issue_count"),
+            func.count(Issue.id).filter(
+                Issue.status.in_([IssueStatus.OPEN, IssueStatus.IN_PROGRESS, IssueStatus.REVIEW])
+            ).label("open_issue_count"),
+        ).where(Issue.project_id == project_id)
+    )
+    issue_stats = stats_result.one()
+
+    plan_count = (await db.execute(
+        select(func.count(Plan.id)).where(Plan.project_id == project_id)
+    )).scalar() or 0
+
+    milestone_count = (await db.execute(
+        select(func.count(Milestone.id)).where(Milestone.project_id == project_id)
+    )).scalar() or 0
+
+    server_count = (await db.execute(
+        select(func.count(Server.id)).where(Server.project_id == project_id)
+    )).scalar() or 0
+
+    return {
+        "issue_count": issue_stats.issue_count or 0,
+        "open_issue_count": issue_stats.open_issue_count or 0,
+        "plan_count": plan_count,
+        "milestone_count": milestone_count,
+        "server_count": server_count,
+    }
+
+
 @router.get("", response_model=list[ProjectReadWithStats])
 async def list_projects(
     status: Optional[str] = Query(None),
@@ -40,35 +74,7 @@ async def list_projects(
 
     response = []
     for p in projects:
-        # 统计
-        issue_count_result = await db.execute(
-            select(func.count(Issue.id)).where(Issue.project_id == p.id)
-        )
-        issue_count = issue_count_result.scalar() or 0
-
-        open_issue_result = await db.execute(
-            select(func.count(Issue.id)).where(
-                Issue.project_id == p.id,
-                Issue.status.in_([IssueStatus.OPEN, IssueStatus.IN_PROGRESS, IssueStatus.REVIEW])
-            )
-        )
-        open_issue_count = open_issue_result.scalar() or 0
-
-        plan_count_result = await db.execute(
-            select(func.count(Plan.id)).where(Plan.project_id == p.id)
-        )
-        plan_count = plan_count_result.scalar() or 0
-
-        milestone_count_result = await db.execute(
-            select(func.count(Milestone.id)).where(Milestone.project_id == p.id)
-        )
-        milestone_count = milestone_count_result.scalar() or 0
-
-        server_count_result = await db.execute(
-            select(func.count(Server.id)).where(Server.project_id == p.id)
-        )
-        server_count = server_count_result.scalar() or 0
-
+        stats = await _get_project_stats(db, p.id)
         response.append(ProjectReadWithStats(
             id=p.id,
             name=p.name,
@@ -80,11 +86,7 @@ async def list_projects(
             default_milestone_id=p.default_milestone_id,
             created_at=p.created_at,
             updated_at=p.updated_at,
-            issue_count=issue_count,
-            open_issue_count=open_issue_count,
-            plan_count=plan_count,
-            milestone_count=milestone_count,
-            server_count=server_count,
+            **stats,
         ))
     return response
 
@@ -114,25 +116,7 @@ async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)
 @router.get("/{slug}", response_model=ProjectReadWithStats)
 async def get_project(slug: str, db: AsyncSession = Depends(get_db)):
     project = await _get_project_by_slug(db, slug)
-
-    issue_count_result = await db.execute(
-        select(func.count(Issue.id)).where(Issue.project_id == project.id)
-    )
-    open_issue_result = await db.execute(
-        select(func.count(Issue.id)).where(
-            Issue.project_id == project.id,
-            Issue.status.in_([IssueStatus.OPEN, IssueStatus.IN_PROGRESS, IssueStatus.REVIEW])
-        )
-    )
-    plan_count_result = await db.execute(
-        select(func.count(Plan.id)).where(Plan.project_id == project.id)
-    )
-    milestone_count_result = await db.execute(
-        select(func.count(Milestone.id)).where(Milestone.project_id == project.id)
-    )
-    server_count_result = await db.execute(
-        select(func.count(Server.id)).where(Server.project_id == project.id)
-    )
+    stats = await _get_project_stats(db, project.id)
 
     return ProjectReadWithStats(
         id=project.id,
@@ -145,11 +129,7 @@ async def get_project(slug: str, db: AsyncSession = Depends(get_db)):
         default_milestone_id=project.default_milestone_id,
         created_at=project.created_at,
         updated_at=project.updated_at,
-        issue_count=issue_count_result.scalar() or 0,
-        open_issue_count=open_issue_result.scalar() or 0,
-        plan_count=plan_count_result.scalar() or 0,
-        milestone_count=milestone_count_result.scalar() or 0,
-        server_count=server_count_result.scalar() or 0,
+        **stats,
     )
 
 
@@ -174,6 +154,22 @@ async def update_project(slug: str, data: ProjectUpdate, db: AsyncSession = Depe
 @router.delete("/{slug}", status_code=204)
 async def delete_project(slug: str, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     project = await _get_project_by_slug(db, slug)
+
+    # 检查关联数据，有数据时拒绝删除
+    issue_count = (await db.execute(select(func.count(Issue.id)).where(Issue.project_id == project.id))).scalar() or 0
+    plan_count = (await db.execute(select(func.count(Plan.id)).where(Plan.project_id == project.id))).scalar() or 0
+    milestone_count = (await db.execute(select(func.count(Milestone.id)).where(Milestone.project_id == project.id))).scalar() or 0
+    server_count = (await db.execute(select(func.count(Server.id)).where(Server.project_id == project.id))).scalar() or 0
+    if issue_count or plan_count or milestone_count or server_count:
+        details = []
+        if issue_count: details.append(f"{issue_count} issues")
+        if plan_count: details.append(f"{plan_count} plans")
+        if milestone_count: details.append(f"{milestone_count} milestones")
+        if server_count: details.append(f"{server_count} servers")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete project with existing data: {', '.join(details)}. Please move or delete them first.",
+        )
 
     await log_activity(
         db, entity_type="project", entity_id=project.id,

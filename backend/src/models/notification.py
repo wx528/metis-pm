@@ -8,6 +8,7 @@ from src.core.database import Base
 
 class NotificationType(str, enum.Enum):
     APPROVAL_NEEDED = "approval_needed"
+    TASK_CREATED = "task_created"
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
     MENTION = "mention"

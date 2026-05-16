@@ -63,6 +63,7 @@ export default function Layout() {
 
   const notifTypeColor: Record<string, string> = {
     approval_needed: "orange",
+    task_created: "blue",
     task_completed: "green",
     task_failed: "red",
     mention: "blue",

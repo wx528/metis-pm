@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey
+from sqlalchemy.orm import relationship
 
 from src.core.database import Base
 
@@ -16,3 +17,5 @@ class ActivityLog(Base):
     new_value = Column(JSON, nullable=True)           # 变更后
     actor = Column(String(20), default="user")        # user | ai_agent
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    project = relationship("Project", foreign_keys=[project_id])

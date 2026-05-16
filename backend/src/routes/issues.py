@@ -52,8 +52,7 @@ async def list_issues(
     if deferred_only:
         query = query.where(Issue.status == IssueStatus.DEFERRED)
     if search:
-        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        query = query.where(Issue.title.contains(escaped, autoescape=False) | Issue.description.contains(escaped, autoescape=False))
+        query = query.where(Issue.title.contains(search, autoescape=True) | Issue.description.contains(search, autoescape=True))
 
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
@@ -94,7 +93,7 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
     if user["role"] == "agent" and issue.priority in (IssuePriority.P0, IssuePriority.P1):
         await create_notification(
             db, recipient="admin",
-            type=NotificationType.TASK_COMPLETED,
+            type=NotificationType.TASK_CREATED,
             title=f"Agent {user['sub']} 创建了 {issue.priority} Issue",
             body=issue.title,
             entity_type="issue", entity_id=issue.id,

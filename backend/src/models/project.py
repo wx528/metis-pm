@@ -30,3 +30,4 @@ class Project(Base):
     milestones = relationship("Milestone", back_populates="project", foreign_keys="Milestone.project_id")
     plans = relationship("Plan", back_populates="project", foreign_keys="Plan.project_id")
     servers = relationship("Server", back_populates="project", foreign_keys="Server.project_id")
+    notifications = relationship("Notification", foreign_keys="Notification.project_id")

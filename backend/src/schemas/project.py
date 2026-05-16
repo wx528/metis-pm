@@ -21,6 +21,7 @@ class ProjectUpdate(BaseModel):
     status: Optional[ProjectStatus] = None
     owner: Optional[str] = None
     default_milestone_id: Optional[int] = None
+    # slug 不可修改，避免破坏已有 URL
 
 
 class ProjectRead(BaseModel):

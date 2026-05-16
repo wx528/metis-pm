@@ -21,7 +21,31 @@
 | Plan 完成率 | 环形进度图 + 分项进度条 |
 | 时间筛选 | 本周/本月/全部 切换 |
 
-#### Bug 修复 & 补全
+#### 看板视图
+
+| 变更 | 说明 |
+|------|------|
+| 5 列看板 | Open / In Progress / Review / Deferred / Closed |
+| 拖拽改状态 | 拖到另一列自动调用 `update_issue_status` API |
+| Deferred 处理 | 拖到 Deferred 列自动选择第一个里程碑暂缓 |
+| Issue 卡片 | 显示 ID + 标题 + 优先级 + 类型 + 来源图标 |
+| 里程碑筛选 | 看板顶部 Select 按里程碑筛选 |
+| 乐观更新 | 拖拽后先更新 UI，API 失败时回滚 |
+| 侧边栏菜单 | 新增"看板"菜单项 + `AppstoreOutlined` 图标 |
+
+#### 前端路由
+
+| 路由 | 说明 |
+|------|------|
+| `/projects/{slug}/board` | 看板视图 |
+
+#### 新增依赖
+
+| 包 | 说明 |
+|------|------|
+| `@dnd-kit/core` | 拖拽核心 |
+| `@dnd-kit/sortable` | 排序扩展 |
+| `@dnd-kit/utilities` | 工具函数 |
 
 | 变更 | 说明 |
 |------|------|

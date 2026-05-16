@@ -12,6 +12,8 @@ import {
   BellOutlined,
   CheckOutlined,
   SwapOutlined,
+  AppstoreOutlined,
+  BarChartOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useProject } from "../hooks/useProject";
@@ -32,6 +34,7 @@ export default function Layout() {
 
   const menuItems = [
     { key: `${basePath}/dashboard` || "/", icon: <DashboardOutlined />, label: "仪表盘" },
+    { key: `${basePath}/board`, icon: <AppstoreOutlined />, label: "看板" },
     { key: `${basePath}/issues`, icon: <BugOutlined />, label: "Issues" },
     { key: `${basePath}/milestones`, icon: <FlagOutlined />, label: "Milestones" },
     { key: `${basePath}/plans`, icon: <ProjectOutlined />, label: "Plans" },

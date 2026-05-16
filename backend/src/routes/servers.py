@@ -14,12 +14,15 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 @router.get("", response_model=List[ServerRead])
 async def list_servers(
     db: AsyncSession = Depends(get_db),
+    project_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     environment: Optional[str] = Query(None),
     server_type: Optional[str] = Query(None),
 ):
     """服务器列表（支持筛选）"""
     query = select(Server).order_by(desc(Server.created_at))
+    if project_id:
+        query = query.where(Server.project_id == project_id)
     if status:
         query = query.where(Server.status == status)
     if environment:

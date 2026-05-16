@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { issuesApi } from "../api/issues";
 import { milestonesApi } from "../api/milestones";
 import type { Issue, Milestone } from "../api";
+import { useProject } from "../hooks/useProject";
 
 const { Option } = Select;
 
@@ -26,6 +27,7 @@ const statusColors: Record<string, string> = {
 
 export default function Issues() {
   const navigate = useNavigate();
+  const { currentProject } = useProject();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,7 +42,9 @@ export default function Issues() {
   const fetchIssues = async () => {
     setLoading(true);
     try {
-      const res = await issuesApi.list({ ...filters, skip: (page - 1) * pageSize, limit: pageSize, sort_by: sortBy });
+      const params: Record<string, any> = { ...filters, skip: (page - 1) * pageSize, limit: pageSize, sort_by: sortBy };
+      if (currentProject) params.project_id = currentProject.id;
+      const res = await issuesApi.list(params);
       setIssues(res.data.items);
       setTotal(res.data.total);
     } finally {
@@ -49,18 +53,22 @@ export default function Issues() {
   };
 
   const fetchMilestones = async () => {
-    const res = await milestonesApi.list();
+    const params: Record<string, any> = {};
+    if (currentProject) params.project_id = currentProject.id;
+    const res = await milestonesApi.list(params);
     setMilestones(res.data);
   };
 
   useEffect(() => {
     fetchIssues();
     fetchMilestones();
-  }, [filters, page, pageSize, sortBy]);
+  }, [filters, page, pageSize, sortBy, currentProject]);
 
   const handleCreate = async (values: any) => {
     try {
-      await issuesApi.create(values);
+      const payload = { ...values };
+      if (currentProject) payload.project_id = currentProject.id;
+      await issuesApi.create(payload);
       message.success("创建成功");
       setModalOpen(false);
       form.resetFields();
@@ -91,7 +99,7 @@ export default function Issues() {
       title: "标题",
       dataIndex: "title",
       render: (text: string, record: Issue) => (
-        <a onClick={() => navigate(`/issues/${record.id}`)}>{text}</a>
+        <a onClick={() => navigate(currentProject ? `/projects/${currentProject.slug}/issues/${record.id}` : `/issues/${record.id}`)}>{text}</a>
       ),
     },
     {

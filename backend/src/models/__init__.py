@@ -1,4 +1,6 @@
 from src.core.database import Base
+from src.models.project import Project, ProjectStatus
+from src.models.notification import Notification, NotificationType
 from src.models.issue import Issue, IssueType, IssueStatus, IssuePriority, IssueSource
 from src.models.milestone import Milestone, MilestoneStatus
 from src.models.comment import Comment
@@ -9,6 +11,8 @@ from src.models.server import Server, ServerType, ServerStatus, ServerEnvironmen
 
 __all__ = [
     "Base",
+    "Project", "ProjectStatus",
+    "Notification", "NotificationType",
     "Issue", "IssueType", "IssueStatus", "IssuePriority", "IssueSource",
     "Milestone", "MilestoneStatus",
     "Comment",

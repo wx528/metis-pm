@@ -4,6 +4,7 @@ import { PlusOutlined, CheckOutlined, CloseOutlined, RobotOutlined, TeamOutlined
 import { useNavigate } from "react-router-dom";
 import { plansApi } from "../api/plans";
 import type { Plan } from "../api";
+import { useProject } from "../hooks/useProject";
 
 const { Option } = Select;
 
@@ -17,6 +18,7 @@ const statusColors: Record<string, string> = {
 
 export default function Plans() {
   const navigate = useNavigate();
+  const { currentProject } = useProject();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -25,7 +27,9 @@ export default function Plans() {
   const fetch = async () => {
     setLoading(true);
     try {
-      const res = await plansApi.list();
+      const params: Record<string, any> = {};
+      if (currentProject) params.project_id = currentProject.id;
+      const res = await plansApi.list(params);
       setPlans(res.data);
     } finally {
       setLoading(false);
@@ -34,11 +38,13 @@ export default function Plans() {
 
   useEffect(() => {
     fetch();
-  }, []);
+  }, [currentProject]);
 
   const handleCreate = async (values: any) => {
     try {
-      await plansApi.create(values);
+      const payload = { ...values };
+      if (currentProject) payload.project_id = currentProject.id;
+      await plansApi.create(payload);
       message.success("创建成功");
       setModalOpen(false);
       form.resetFields();
@@ -91,7 +97,7 @@ export default function Plans() {
       title: "标题",
       dataIndex: "title",
       render: (text: string, record: Plan) => (
-        <a onClick={() => navigate(`/plans/${record.id}`)}>{text}</a>
+        <a onClick={() => navigate(currentProject ? `/projects/${currentProject.slug}/plans/${record.id}` : `/plans/${record.id}`)}>{text}</a>
       ),
     },
     {

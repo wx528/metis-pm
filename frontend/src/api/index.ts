@@ -5,3 +5,5 @@ export * from "./servers";
 export * from "./auth";
 export * from "./activity_logs";
 export * from "./dashboard";
+export * from "./projects";
+export * from "./notifications";

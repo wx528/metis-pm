@@ -6,6 +6,7 @@ from src.models.issue import IssueType, IssueStatus, IssuePriority, IssueSource
 
 
 class IssueCreate(BaseModel):
+    project_id: Optional[int] = None
     title: str = Field(..., max_length=200)
     description: Optional[str] = None
     issue_type: IssueType = IssueType.TASK
@@ -36,6 +37,7 @@ class IssueUpdate(BaseModel):
 
 class IssueRead(BaseModel):
     id: int
+    project_id: Optional[int] = None
     title: str
     description: Optional[str] = None
     issue_type: str

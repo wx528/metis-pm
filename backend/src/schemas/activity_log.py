@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 
 class ActivityLogCreate(BaseModel):
+    project_id: Optional[int] = None
     entity_type: str
     entity_id: int
     action: str
@@ -14,6 +15,7 @@ class ActivityLogCreate(BaseModel):
 
 class ActivityLogRead(BaseModel):
     id: int
+    project_id: Optional[int] = None
     entity_type: str
     entity_id: int
     action: str

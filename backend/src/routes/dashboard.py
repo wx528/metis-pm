@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
+from typing import Optional
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case
 
 from src.core.dependencies import get_db
-from src.core.activity import log_activity
 from src.models.issue import Issue, IssueStatus, IssuePriority
 from src.models.plan import Plan, PlanStatus
 from src.models.server import Server, ServerStatus
@@ -14,60 +14,69 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("")
-async def get_dashboard(db: AsyncSession = Depends(get_db)):
+async def get_dashboard(
+    project_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
     """Dashboard 数据聚合"""
 
     # Issues 统计
-    issues_result = await db.execute(
-        select(
-            func.count(Issue.id).label("total"),
-            func.sum(case((Issue.priority == IssuePriority.P0, 1), else_=0)).label("p0"),
-            func.sum(case((Issue.priority == IssuePriority.P1, 1), else_=0)).label("p1"),
-            func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
-            func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
-            func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
-            func.sum(case((Issue.source == "ai_agent", 1), else_=0)).label("ai_agent"),
-        )
+    issues_query = select(
+        func.count(Issue.id).label("total"),
+        func.sum(case((Issue.priority == IssuePriority.P0, 1), else_=0)).label("p0"),
+        func.sum(case((Issue.priority == IssuePriority.P1, 1), else_=0)).label("p1"),
+        func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+        func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
+        func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
+        func.sum(case((Issue.source == "ai_agent", 1), else_=0)).label("ai_agent"),
     )
+    if project_id:
+        issues_query = issues_query.where(Issue.project_id == project_id)
+    issues_result = await db.execute(issues_query)
     issues_row = issues_result.one()
 
     # Plans 统计
-    plans_result = await db.execute(
-        select(
-            func.count(Plan.id).label("total"),
-            func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending_approval"),
-            func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
-        )
+    plans_query = select(
+        func.count(Plan.id).label("total"),
+        func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending_approval"),
+        func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
     )
+    if project_id:
+        plans_query = plans_query.where(Plan.project_id == project_id)
+    plans_result = await db.execute(plans_query)
     plans_row = plans_result.one()
 
     # Servers 统计
-    servers_result = await db.execute(
-        select(
-            func.count(Server.id).label("total"),
-            func.sum(case((Server.status == ServerStatus.ACTIVE, 1), else_=0)).label("active"),
-            func.sum(case((Server.status == ServerStatus.MAINTENANCE, 1), else_=0)).label("maintenance"),
-            func.sum(case((Server.status == ServerStatus.OFFLINE, 1), else_=0)).label("offline"),
-        )
+    servers_query = select(
+        func.count(Server.id).label("total"),
+        func.sum(case((Server.status == ServerStatus.ACTIVE, 1), else_=0)).label("active"),
+        func.sum(case((Server.status == ServerStatus.MAINTENANCE, 1), else_=0)).label("maintenance"),
+        func.sum(case((Server.status == ServerStatus.OFFLINE, 1), else_=0)).label("offline"),
     )
+    if project_id:
+        servers_query = servers_query.where(Server.project_id == project_id)
+    servers_result = await db.execute(servers_query)
     servers_row = servers_result.one()
 
     # 最近 Activity
-    activity_result = await db.execute(
-        select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(10)
-    )
+    activity_query = select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(10)
+    if project_id:
+        activity_query = activity_query.where(ActivityLog.project_id == project_id)
+    activity_result = await db.execute(activity_query)
     activities = activity_result.scalars().all()
 
     # 待审批计划列表
-    pending_plans_result = await db.execute(
-        select(Plan).where(Plan.status == PlanStatus.PENDING_APPROVAL).order_by(Plan.created_at.desc())
-    )
+    pending_plans_query = select(Plan).where(Plan.status == PlanStatus.PENDING_APPROVAL).order_by(Plan.created_at.desc())
+    if project_id:
+        pending_plans_query = pending_plans_query.where(Plan.project_id == project_id)
+    pending_plans_result = await db.execute(pending_plans_query)
     pending_plans = pending_plans_result.scalars().all()
 
     # 最近 Issues
-    recent_issues_result = await db.execute(
-        select(Issue).order_by(Issue.created_at.desc()).limit(5)
-    )
+    recent_issues_query = select(Issue).order_by(Issue.created_at.desc()).limit(5)
+    if project_id:
+        recent_issues_query = recent_issues_query.where(Issue.project_id == project_id)
+    recent_issues_result = await db.execute(recent_issues_query)
     recent_issues = recent_issues_result.scalars().all()
 
     return {

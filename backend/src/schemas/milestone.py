@@ -6,6 +6,7 @@ from src.models.milestone import MilestoneStatus
 
 
 class MilestoneCreate(BaseModel):
+    project_id: Optional[int] = None
     title: str = Field(..., max_length=200)
     description: Optional[str] = None
     phase: Optional[str] = None
@@ -22,6 +23,7 @@ class MilestoneUpdate(BaseModel):
 
 class MilestoneRead(BaseModel):
     id: int
+    project_id: Optional[int] = None
     title: str
     description: Optional[str] = None
     phase: Optional[str] = None

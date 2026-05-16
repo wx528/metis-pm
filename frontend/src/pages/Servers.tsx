@@ -20,6 +20,7 @@ import {
 } from "@ant-design/icons";
 import { serversApi } from "../api/servers";
 import type { Server, ServerCredentials } from "../api";
+import { useProject } from "../hooks/useProject";
 
 const { Option } = Select;
 
@@ -37,6 +38,7 @@ const envColors: Record<string, string> = {
 };
 
 export default function Servers() {
+  const { currentProject } = useProject();
   const [servers, setServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -47,7 +49,9 @@ export default function Servers() {
   const fetch = async () => {
     setLoading(true);
     try {
-      const res = await serversApi.list();
+      const params: Record<string, any> = {};
+      if (currentProject) params.project_id = currentProject.id;
+      const res = await serversApi.list(params);
       setServers(res.data);
     } finally {
       setLoading(false);
@@ -56,11 +60,13 @@ export default function Servers() {
 
   useEffect(() => {
     fetch();
-  }, []);
+  }, [currentProject]);
 
   const handleCreate = async (values: any) => {
     try {
-      await serversApi.create(values);
+      const payload = { ...values };
+      if (currentProject) payload.project_id = currentProject.id;
+      await serversApi.create(payload);
       message.success("创建成功");
       setModalOpen(false);
       form.resetFields();

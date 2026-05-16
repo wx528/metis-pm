@@ -7,8 +7,10 @@ from sqlalchemy.orm import selectinload
 
 from src.core.dependencies import get_db
 from src.core.activity import log_activity
+from src.core.notification import create_notification
 from src.models.plan import Plan, PlanStatus
 from src.models.plan_item import PlanItem, PlanItemStatus
+from src.models.notification import NotificationType
 from src.schemas.plan import (
     PlanCreate, PlanUpdate, PlanRead, PlanReadWithItems, PlanReadWithStats,
     PlanItemCreate, PlanItemUpdate, PlanItemRead,
@@ -24,11 +26,14 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def list_plans(
     db: AsyncSession = Depends(get_db),
     status: Optional[str] = Query(None),
+    project_id: Optional[int] = Query(None),
 ):
     """计划列表"""
     query = select(Plan).order_by(desc(Plan.created_at))
     if status:
         query = query.where(Plan.status == status)
+    if project_id:
+        query = query.where(Plan.project_id == project_id)
     result = await db.execute(query)
     plans = result.scalars().all()
 
@@ -43,6 +48,7 @@ async def list_plans(
         row = stats.one()
         out.append(PlanReadWithStats(
             id=p.id,
+            project_id=p.project_id,
             title=p.title,
             description=p.description,
             status=p.status,
@@ -71,7 +77,21 @@ async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user
         actor=user["sub"],
         action="created",
         new_value={"title": plan.title, "status": plan.status, "proposed_by": plan.proposed_by},
+        project_id=plan.project_id,
     )
+
+    # Plan pending_approval → 通知 admin 审批
+    if plan.status == PlanStatus.PENDING_APPROVAL:
+        await create_notification(
+            db, recipient="admin",
+            type=NotificationType.APPROVAL_NEEDED,
+            title=f"Plan #{plan.id} 等待审批",
+            body=plan.title,
+            entity_type="plan", entity_id=plan.id,
+            created_by=user["sub"],
+            project_id=plan.project_id,
+        )
+
     return plan
 
 
@@ -108,6 +128,7 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
         action="updated", actor=user["sub"],
         old_value=old_values,
         new_value={k: getattr(plan, k) for k in old_values.keys()},
+        project_id=plan.project_id,
     )
     return plan
 
@@ -123,6 +144,7 @@ async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: di
         db, entity_type="plan", entity_id=plan.id,
         action="deleted", actor=user["sub"],
         old_value={"title": plan.title},
+        project_id=plan.project_id,
     )
 
     await db.delete(plan)
@@ -154,7 +176,21 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
         action="approved", actor=user["sub"],
         old_value={"status": old_status},
         new_value={"status": plan.status, "approved_by": plan.approved_by},
+        project_id=plan.project_id,
     )
+
+    # 通知 plan 提议者审批通过
+    if plan.proposed_by and plan.proposed_by != "user":
+        await create_notification(
+            db, recipient=plan.proposed_by,
+            type=NotificationType.INFO,
+            title=f"Plan #{plan.id} 已审批通过",
+            body=plan.title,
+            entity_type="plan", entity_id=plan.id,
+            created_by=user["sub"],
+            project_id=plan.project_id,
+        )
+
     return plan
 
 
@@ -179,7 +215,21 @@ async def reject_plan(plan_id: int, reason: Optional[str] = None, db: AsyncSessi
         action="rejected", actor=user["sub"],
         old_value={"status": old_status},
         new_value={"status": plan.status, "reject_reason": reason},
+        project_id=plan.project_id,
     )
+
+    # 通知 plan 提议者被拒绝
+    if plan.proposed_by and plan.proposed_by != "user":
+        await create_notification(
+            db, recipient=plan.proposed_by,
+            type=NotificationType.INFO,
+            title=f"Plan #{plan.id} 被拒绝",
+            body=f"{plan.title} - 原因: {reason or '无'}",
+            entity_type="plan", entity_id=plan.id,
+            created_by=user["sub"],
+            project_id=plan.project_id,
+        )
+
     return plan
 
 
@@ -210,6 +260,7 @@ async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession 
         db, entity_type="plan_item", entity_id=item.id,
         action="created", actor=user["sub"],
         new_value={"title": item.title, "plan_id": plan_id},
+        project_id=plan.project_id,
     )
     return item
 
@@ -237,11 +288,16 @@ async def update_plan_item(
     if "status" in update_data and update_data["status"] != old_status:
         action = "completed" if update_data["status"] == "done" else "status_changed"
 
+    # 获取 plan 的 project_id
+    plan_result = await db.execute(select(Plan).where(Plan.id == plan_id))
+    plan = plan_result.scalar_one_or_none()
+
     await log_activity(
         db, entity_type="plan_item", entity_id=item.id,
         action=action, actor=user["sub"],
         old_value={"status": old_status},
         new_value={"status": item.status, "completed_by": item.completed_by},
+        project_id=plan.project_id if plan else None,
     )
     return item
 
@@ -255,10 +311,15 @@ async def delete_plan_item(plan_id: int, item_id: int, db: AsyncSession = Depend
     if not item:
         raise HTTPException(status_code=404, detail="PlanItem not found")
 
+    # 获取 plan 的 project_id
+    plan_result = await db.execute(select(Plan).where(Plan.id == plan_id))
+    plan = plan_result.scalar_one_or_none()
+
     await log_activity(
         db, entity_type="plan_item", entity_id=item.id,
         action="deleted", actor=user["sub"],
         old_value={"title": item.title},
+        project_id=plan.project_id if plan else None,
     )
 
     await db.delete(item)

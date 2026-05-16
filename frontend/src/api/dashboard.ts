@@ -47,5 +47,5 @@ export interface DashboardData {
 }
 
 export const dashboardApi = {
-  get: () => api.get<DashboardData>("/dashboard"),
+  get: (params?: Record<string, any>) => api.get<DashboardData>("/dashboard", { params }),
 };

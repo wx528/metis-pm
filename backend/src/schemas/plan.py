@@ -39,6 +39,7 @@ class PlanItemUpdate(BaseModel):
 
 
 class PlanCreate(BaseModel):
+    project_id: Optional[int] = None
     title: str = Field(..., max_length=200)
     description: Optional[str] = None
     status: PlanStatus = PlanStatus.DRAFT
@@ -55,6 +56,7 @@ class PlanUpdate(BaseModel):
 
 class PlanRead(BaseModel):
     id: int
+    project_id: Optional[int] = None
     title: str
     description: Optional[str] = None
     status: PlanStatus

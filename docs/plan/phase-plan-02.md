@@ -9,7 +9,7 @@
 | Phase 1 | 基础 CRUD + 前端骨架 | Issues/Milestones/Plans 增删改查 | v0.1.0 | **已完成** |
 | Phase 2 | 人机协作 + MCP | MCP Server、ActivityLog | v0.2.0 | **已完成** |
 | Phase 3 | 仪表盘 + 部署 | Dashboard、Docker 化 | v0.3.0 | **已完成** |
-| Phase 4 | 多项目 + 通知 | Project 模型、Notification、SSE 推送 | v0.4.0 | 待开始 |
+| Phase 4 | 多项目 + 通知 | Project 模型、Notification、SSE 推送 | v0.4.0 | **已完成** |
 | Phase 5 | 看板 + 数据看板 | 拖拽看板、Agent 统计、趋势图 | v0.5.0 | 待开始 |
 | Phase 6 | 工作流引擎 | Workflow 模型、执行引擎、内置模板 | v0.6.0 | 待开始 |
 

@@ -40,6 +40,7 @@ class Issue(Base):
     __tablename__ = "issues"
 
     id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     issue_type = Column(Enum(IssueType), default=IssueType.TASK, nullable=False)
@@ -56,6 +57,7 @@ class Issue(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     closed_at = Column(DateTime, nullable=True)
 
+    project = relationship("Project", back_populates="issues", foreign_keys=[project_id])
     milestone = relationship("Milestone", back_populates="issues", foreign_keys=[milestone_id])
     deferred_to_milestone = relationship("Milestone", foreign_keys=[deferred_to_milestone_id])
     comments = relationship("Comment", back_populates="issue", cascade="all, delete-orphan")

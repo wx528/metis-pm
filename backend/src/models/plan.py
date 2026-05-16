@@ -24,6 +24,7 @@ class Plan(Base):
     __tablename__ = "plans"
 
     id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(Enum(PlanStatus), default=PlanStatus.DRAFT)
@@ -35,5 +36,6 @@ class Plan(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    project = relationship("Project", back_populates="plans", foreign_keys=[project_id])
     current_milestone = relationship("Milestone", foreign_keys=[current_milestone_id])
     plan_items = relationship("PlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="PlanItem.sort_order")

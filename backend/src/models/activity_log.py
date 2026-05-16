@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey
 
 from src.core.database import Base
 
@@ -8,6 +8,7 @@ class ActivityLog(Base):
     __tablename__ = "activity_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     entity_type = Column(String(20), nullable=False)  # issue | plan | plan_item | server | milestone
     entity_id = Column(Integer, nullable=False)
     action = Column(String(30), nullable=False)       # created | updated | status_changed | approved | rejected | deferred | commented | completed

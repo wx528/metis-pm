@@ -6,6 +6,7 @@ from src.models.server import ServerType, ServerStatus, ServerEnvironment
 
 
 class ServerCreate(BaseModel):
+    project_id: Optional[int] = None
     name: str = Field(..., max_length=100)
     description: Optional[str] = None
     ip_address: Optional[str] = None
@@ -36,6 +37,7 @@ class ServerUpdate(BaseModel):
 
 class ServerRead(BaseModel):
     id: int
+    project_id: Optional[int] = None
     name: str
     description: Optional[str] = None
     ip_address: Optional[str] = None
@@ -58,6 +60,7 @@ class ServerRead(BaseModel):
     def from_orm_with_flags(cls, server: "Server") -> "ServerRead":
         return cls(
             id=server.id,
+            project_id=server.project_id,
             name=server.name,
             description=server.description,
             ip_address=server.ip_address,

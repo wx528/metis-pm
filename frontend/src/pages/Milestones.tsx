@@ -3,8 +3,10 @@ import { Card, Row, Col, Tag, Button, Modal, Form, Input, DatePicker, message, P
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { milestonesApi } from "../api/milestones";
 import type { MilestoneWithStats } from "../api";
+import { useProject } from "../hooks/useProject";
 
 export default function Milestones() {
+  const { currentProject } = useProject();
   const [milestones, setMilestones] = useState<MilestoneWithStats[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -13,7 +15,9 @@ export default function Milestones() {
   const fetch = async () => {
     setLoading(true);
     try {
-      const res = await milestonesApi.list();
+      const params: Record<string, any> = {};
+      if (currentProject) params.project_id = currentProject.id;
+      const res = await milestonesApi.list(params);
       setMilestones(res.data);
     } finally {
       setLoading(false);
@@ -22,14 +26,16 @@ export default function Milestones() {
 
   useEffect(() => {
     fetch();
-  }, []);
+  }, [currentProject]);
 
   const handleCreate = async (values: any) => {
     try {
-      await milestonesApi.create({
+      const payload: Record<string, any> = {
         ...values,
         due_date: values.due_date?.format("YYYY-MM-DD"),
-      });
+      };
+      if (currentProject) payload.project_id = currentProject.id;
+      await milestonesApi.create(payload);
       message.success("创建成功");
       setModalOpen(false);
       form.resetFields();

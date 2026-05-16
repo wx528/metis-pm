@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.4.0] - 2026-05-17
+
+### Phase 4：多项目 + 通知 + SSE
+
+#### 多项目支持
+
+| 变更 | 说明 |
+|------|------|
+| `Project` 模型 | 新增 name, slug, description, repo_url, status, owner, default_milestone_id |
+| `project_id` 外键 | Issue, Milestone, Plan, Server, ActivityLog 均新增 `project_id` 列 |
+| 数据迁移 | 自动创建 "default" 项目，回填所有现有数据的 `project_id` |
+| Project CRUD | `GET/POST/PUT/DELETE /api/v1/projects` |
+| Project 统计 | 列表和详情返回 issue_count, plan_count, milestone_count, server_count |
+| 前端项目切换器 | 侧边栏顶部 Dropdown 切换项目，localStorage 记住选择 |
+| URL 结构 | `/projects/{slug}/dashboard`, `/projects/{slug}/issues` 等 |
+| 旧路由兼容 | `/issues`, `/plans` 等旧路由自动重定向到 default 项目 |
+
+#### 通知系统
+
+| 变更 | 说明 |
+|------|------|
+| `Notification` 模型 | 新增 recipient, type, title, body, entity_type, entity_id, read, created_by |
+| 通知类型 | `approval_needed`, `task_completed`, `task_failed`, `mention`, `workflow_paused`, `info` |
+| 通知 CRUD | `GET /api/v1/notifications`, `PUT /{id}/read`, `PUT /read-all`, `GET /unread-count` |
+| 通知触发 | Plan 待审批 → 通知 admin；Agent 完成 Issue → 通知 admin；审批结果 → 通知提议者 |
+| SSE 推送 | `GET /api/v1/notifications/stream` 实时推送新通知 |
+| 前端铃铛 | Header 显示未读数 Badge + 通知抽屉列表 |
+| SSE 客户端 | 前端 fetch ReadableStream 接收实时通知 + 30s 心跳 |
+
+#### MCP 工具新增/更新
+
+| 工具 | 变更 |
+|------|------|
+| `list_projects` | 新增：列出所有项目含统计 |
+| `create_issue` | 新增 `project_id` 参数 |
+| `list_issues` | 新增 `project_id` 筛选 |
+| `propose_plan` | 新增 `project_id` 参数 |
+| `list_plans` | 新增 `project_id` 筛选 |
+| `list_milestones` | 新增 `project_id` 筛选 |
+| `list_servers` | 新增 `project_id` 筛选 |
+| `check_notifications` | 新增：检查当前 Agent 的通知 |
+| `mark_notification_read` | 新增：标记通知已读 |
+
+#### Nginx SSE 支持
+
+| 变更 | 说明 |
+|------|------|
+| `proxy_buffering off` | 禁用 Nginx 缓冲，确保 SSE 实时推送 |
+| `proxy_read_timeout 86400s` | 长连接超时 24h |
+
+### 验证清单
+
+```
+[x] 创建 Project 模型 + 迁移，现有数据归入 default 项目
+[x] 所有查询支持 project_id 过滤
+[x] Notification 模型 + CRUD + 触发逻辑
+[x] SSE 推送端点 + 前端实时接收
+[x] 前端项目切换器 + URL 结构变更
+[x] 前端通知铃铛 + 通知列表
+[x] MCP 新增 list_projects / check_notifications
+[x] Nginx 配置更新（SSE 支持）
+[x] 旧路由兼容：重定向到 default 项目
+```
+
+---
+
 ## [0.3.0] - 2026-05-16
 
 ### 多 Agent 身份认证系统

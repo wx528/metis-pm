@@ -15,11 +15,14 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 @router.get("", response_model=List[MilestoneReadWithStats])
 async def list_milestones(
     db: AsyncSession = Depends(get_db),
+    project_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     phase: Optional[str] = Query(None),
 ):
     """里程碑列表（含统计）"""
     query = select(Milestone).order_by(desc(Milestone.created_at))
+    if project_id:
+        query = query.where(Milestone.project_id == project_id)
     if status:
         query = query.where(Milestone.status == status)
     if phase:
@@ -40,6 +43,7 @@ async def list_milestones(
         row = stats.one()
         out.append(MilestoneReadWithStats(
             id=m.id,
+            project_id=m.project_id,
             title=m.title,
             description=m.description,
             phase=m.phase,

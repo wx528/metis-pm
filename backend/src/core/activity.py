@@ -12,9 +12,11 @@ async def log_activity(
     actor: str = "user",
     old_value: Optional[dict] = None,
     new_value: Optional[dict] = None,
+    project_id: Optional[int] = None,
 ) -> ActivityLog:
     """记录活动日志"""
     log = ActivityLog(
+        project_id=project_id,
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,

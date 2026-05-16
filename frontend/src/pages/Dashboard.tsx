@@ -17,6 +17,7 @@ import {
 } from "@ant-design/icons";
 import { dashboardApi } from "../api/dashboard";
 import type { DashboardData } from "../api";
+import { useProject } from "../hooks/useProject";
 
 const actionIcons: Record<string, React.ReactNode> = {
   created: <PlusOutlined />,
@@ -41,18 +42,20 @@ const actionLabels: Record<string, string> = {
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
+  const { currentProject } = useProject();
 
   useEffect(() => {
     const fetch = async () => {
       try {
-        const res = await dashboardApi.get();
+        const params = currentProject ? { project_id: currentProject.id } : {};
+        const res = await dashboardApi.get(params);
         setData(res.data);
       } finally {
         setLoading(false);
       }
     };
     fetch();
-  }, []);
+  }, [currentProject]);
 
   if (loading || !data) return <Spin size="large" style={{ display: "block", margin: "100px auto" }} />;
 
@@ -74,7 +77,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h2>仪表盘</h2>
+      <h2>仪表盘{currentProject ? ` — ${currentProject.name}` : ""}</h2>
 
       {/* Issues 统计 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>

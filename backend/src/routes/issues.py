@@ -6,7 +6,9 @@ from sqlalchemy.orm import selectinload
 
 from src.core.dependencies import get_db
 from src.core.activity import log_activity
+from src.core.notification import create_notification
 from src.models.issue import Issue, IssueType, IssueStatus, IssuePriority, IssueSource
+from src.models.notification import NotificationType
 from src.models.comment import Comment
 from src.schemas.issue import IssueCreate, IssueUpdate, IssueRead, IssueReadWithComments, IssueListResponse
 from src.schemas.comment import CommentCreate, CommentRead
@@ -20,6 +22,7 @@ async def list_issues(
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    project_id: Optional[int] = Query(None),
     issue_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
@@ -32,6 +35,8 @@ async def list_issues(
 ):
     """问题列表（支持筛选和搜索）"""
     query = select(Issue)
+    if project_id:
+        query = query.where(Issue.project_id == project_id)
     if issue_type:
         query = query.where(Issue.issue_type == issue_type)
     if status:
@@ -82,7 +87,21 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
         actor=user["sub"],
         action="created",
         new_value={"title": issue.title, "priority": issue.priority, "status": issue.status},
+        project_id=issue.project_id,
     )
+
+    # 如果 Agent 创建了 P0/P1 issue，通知 admin
+    if user["role"] == "agent" and issue.priority in (IssuePriority.P0, IssuePriority.P1):
+        await create_notification(
+            db, recipient="admin",
+            type=NotificationType.TASK_COMPLETED,
+            title=f"Agent {user['sub']} 创建了 {issue.priority} Issue",
+            body=issue.title,
+            entity_type="issue", entity_id=issue.id,
+            created_by=user["sub"],
+            project_id=issue.project_id,
+        )
+
     return issue
 
 
@@ -135,7 +154,21 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
         action=action, actor=user["sub"],
         old_value=old_values,
         new_value={k: getattr(issue, k) for k in old_values.keys()},
+        project_id=issue.project_id,
     )
+
+    # Agent 完成 issue 时通知 admin
+    if user["role"] == "agent" and update_data.get("status") == IssueStatus.CLOSED:
+        await create_notification(
+            db, recipient="admin",
+            type=NotificationType.TASK_COMPLETED,
+            title=f"Agent {user['sub']} 完成了 Issue #{issue.id}",
+            body=issue.title,
+            entity_type="issue", entity_id=issue.id,
+            created_by=user["sub"],
+            project_id=issue.project_id,
+        )
+
     return issue
 
 
@@ -150,6 +183,7 @@ async def delete_issue(issue_id: int, db: AsyncSession = Depends(get_db), user: 
         db, entity_type="issue", entity_id=issue.id,
         action="deleted", actor=user["sub"],
         old_value={"title": issue.title},
+        project_id=issue.project_id,
     )
 
     await db.delete(issue)
@@ -183,6 +217,7 @@ async def defer_issue(
         action="deferred", actor=user["sub"],
         old_value={"status": old_status},
         new_value={"status": issue.status, "deferred_to_milestone_id": deferred_to_milestone_id, "reason": deferred_reason},
+        project_id=issue.project_id,
     )
     return issue
 
@@ -203,5 +238,6 @@ async def add_comment(issue_id: int, data: CommentCreate, db: AsyncSession = Dep
         db, entity_type="issue", entity_id=issue.id,
         action="commented", actor=user["sub"],
         new_value={"comment_id": comment.id, "content": data.content[:100]},
+        project_id=issue.project_id,
     )
     return comment

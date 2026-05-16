@@ -7,7 +7,7 @@ AI Coding Agent 通过 MCP 协议与本系统交互的工具入口
   "mcpServers": {
     "project-manager": {
       "command": "python",
-      "args": ["D:/AI-learning/tce_tiku/project_mananger_system/backend/mcp_server.py"],
+      "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
       "env": {
         "PM_API_URL": "http://localhost:8000/api/v1",
         "PM_AGENT_PASSWORD": "CHANGE-ME"
@@ -84,6 +84,26 @@ async def check_connection() -> str:
             return f"ERROR: API returned {resp.status_code}. Is the backend running?"
 
 
+# ── Projects ────────────────────────────────────────
+
+@mcp.tool()
+async def list_projects() -> str:
+    """列出所有项目（含统计）"""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/projects", headers=await get_headers())
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        items = resp.json()
+        if not items:
+            return "No projects found. Create one with the project manager web UI."
+        lines = [f"Total: {len(items)} projects"]
+        for item in items:
+            status = item.get("status", "?")
+            stats = f" ({item.get('issue_count',0)} issues, {item.get('plan_count',0)} plans, {item.get('milestone_count',0)} milestones, {item.get('server_count',0)} servers)"
+            lines.append(f"  #{item['id']} [{status}] {item['name']} (slug={item['slug']}){stats}")
+        return "\n".join(lines)
+
+
 # ── Issues ─────────────────────────────────────────
 
 @mcp.tool()
@@ -92,34 +112,40 @@ async def create_issue(
     description: str = "",
     priority: str = "P2",
     issue_type: str = "task",
+    project_id: Optional[int] = None,
     milestone_id: Optional[int] = None,
     labels: str = "",
 ) -> str:
     """创建 issue，source 自动标记为当前 agent 身份"""
     headers = await get_headers()
     agent_name = _token_cache.get("sub", "ai_agent")
+    payload = {
+        "title": title,
+        "description": description,
+        "priority": priority,
+        "issue_type": issue_type,
+        "source": "ai_agent",
+        "milestone_id": milestone_id,
+        "labels": labels,
+    }
+    if project_id:
+        payload["project_id"] = project_id
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{API_BASE}/issues",
             headers=headers,
-            json={
-                "title": title,
-                "description": description,
-                "priority": priority,
-                "issue_type": issue_type,
-                "source": "ai_agent",
-                "milestone_id": milestone_id,
-                "labels": labels,
-            },
+            json=payload,
         )
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         data = resp.json()
-        return f"Issue #{data['id']} created: [{data['priority']}] {data['title']} (status={data['status']})"
+        project_info = f" (project_id={data.get('project_id')})" if data.get('project_id') else ""
+        return f"Issue #{data['id']} created: [{data['priority']}] {data['title']} (status={data['status']}){project_info}"
 
 
 @mcp.tool()
 async def list_issues(
+    project_id: Optional[int] = None,
     status: Optional[str] = None,
     priority: Optional[str] = None,
     source: Optional[str] = None,
@@ -129,6 +155,8 @@ async def list_issues(
 ) -> str:
     """查询 issues 列表"""
     params = {"limit": limit}
+    if project_id:
+        params["project_id"] = project_id
     if status:
         params["status"] = status
     if priority:
@@ -222,20 +250,23 @@ async def add_issue_comment(issue_id: int, content: str) -> str:
 # ── Plans ──────────────────────────────────────────
 
 @mcp.tool()
-async def propose_plan(title: str, description: str = "") -> str:
+async def propose_plan(title: str, description: str = "", project_id: Optional[int] = None) -> str:
     """提议一个新计划（状态为 pending_approval，等待用户审批）"""
     headers = await get_headers()
     agent_name = _token_cache.get("sub", "ai_agent")
+    payload = {
+        "title": title,
+        "description": description,
+        "proposed_by": agent_name,
+        "status": "pending_approval",
+    }
+    if project_id:
+        payload["project_id"] = project_id
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{API_BASE}/plans",
             headers=headers,
-            json={
-                "title": title,
-                "description": description,
-                "proposed_by": agent_name,
-                "status": "pending_approval",
-            },
+            json=payload,
         )
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
@@ -244,11 +275,13 @@ async def propose_plan(title: str, description: str = "") -> str:
 
 
 @mcp.tool()
-async def list_plans(status: Optional[str] = None) -> str:
+async def list_plans(status: Optional[str] = None, project_id: Optional[int] = None) -> str:
     """查询计划列表"""
     params = {}
     if status:
         params["status"] = status
+    if project_id:
+        params["project_id"] = project_id
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{API_BASE}/plans", headers=await get_headers(), params=params)
         if resp.status_code >= 400:
@@ -309,10 +342,13 @@ async def update_plan_progress(plan_id: int, item_title: str, status: str = "don
 # ── Milestones ─────────────────────────────────────
 
 @mcp.tool()
-async def list_milestones() -> str:
+async def list_milestones(project_id: Optional[int] = None) -> str:
     """查询里程碑/阶段列表"""
+    params = {}
+    if project_id:
+        params["project_id"] = project_id
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/milestones", headers=await get_headers())
+        resp = await client.get(f"{API_BASE}/milestones", headers=await get_headers(), params=params)
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         items = resp.json()
@@ -331,10 +367,13 @@ async def list_milestones() -> str:
 # ── Servers ────────────────────────────────────────
 
 @mcp.tool()
-async def list_servers() -> str:
+async def list_servers(project_id: Optional[int] = None) -> str:
     """查询服务器列表"""
+    params = {}
+    if project_id:
+        params["project_id"] = project_id
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/servers", headers=await get_headers())
+        resp = await client.get(f"{API_BASE}/servers", headers=await get_headers(), params=params)
         if resp.status_code >= 400:
             return f"Error: {resp.status_code} - {resp.text}"
         items = resp.json()
@@ -363,6 +402,44 @@ async def get_server_credentials(server_id: int) -> str:
             f"SSH Key: {'(present)' if data.get('ssh_key') else 'N/A'}\n"
             f"Status: see /servers/{server_id} for status info"
         )
+
+
+# ── Notifications ───────────────────────────────────
+
+@mcp.tool()
+async def check_notifications(unread_only: bool = False, limit: int = 10) -> str:
+    """检查当前 Agent 的通知"""
+    params = {"limit": limit}
+    if unread_only:
+        params["unread_only"] = "true"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/notifications", headers=await get_headers(), params=params)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+        items = data.get("items", [])
+        if not items:
+            return "No notifications."
+        lines = [f"Total: {data['total']} notifications (showing {len(items)})"]
+        for item in items:
+            read_mark = "✓" if item.get("read") else "●"
+            lines.append(f"  {read_mark} [{item['type']}] {item['title']}")
+            if item.get("body"):
+                lines.append(f"    {item['body']}")
+        return "\n".join(lines)
+
+
+@mcp.tool()
+async def mark_notification_read(notification_id: int) -> str:
+    """标记通知已读"""
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            f"{API_BASE}/notifications/{notification_id}/read",
+            headers=await get_headers(),
+        )
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        return f"Notification #{notification_id} marked as read"
 
 
 def main():

@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Project Manager",
-    version="0.5.0",
+    version="0.6.0",
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
@@ -118,4 +118,4 @@ app.include_router(api_router)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "app": "project_manager", "version": "0.5.0"}
+    return {"status": "ok", "app": "project_manager", "version": "0.6.0"}

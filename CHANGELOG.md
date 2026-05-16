@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.6.0] - 2026-05-17
+
+### Phase 6：工作流引擎
+
+#### 后端 — 模型
+
+| 模型 | 说明 |
+|------|------|
+| `Workflow` | name, trigger, trigger_config, status, created_by |
+| `WorkflowStep` | workflow_id, step_type, config, sort_order, timeout_seconds, on_failure |
+| `WorkflowRun` | workflow_id, triggered_by, status, current_step_index, context |
+
+#### 步骤类型
+
+| step_type | 说明 |
+|-----------|------|
+| `create_issue` | 自动创建 Issue |
+| `update_issue` | 更新 Issue 状态/优先级 |
+| `notify` | 发送通知 |
+| `wait_approval` | 暂停等待人类审批 |
+| `propose_plan` | 提议 Plan |
+
+#### 触发机制
+
+| trigger | 说明 | 状态 |
+|---------|------|------|
+| `on_issue_created` | Issue 创建时自动触发 | ✅ 已接入 issues 路由 |
+| `on_plan_approved` | Plan 审批后自动触发 | ✅ 已接入 plans 路由 |
+| `manual` | 手动触发 | ✅ API + MCP |
+| `on_schedule` | 定时触发 | ⬜ 需 APScheduler |
+
+#### 工作流引擎
+
+| 功能 | 说明 |
+|------|------|
+| `WorkflowEngine.trigger()` | 触发工作流，创建 Run 并执行步骤 |
+| `WorkflowEngine.resume()` | 审批后恢复执行 |
+| 失败策略 | skip / abort / retry / notify_human |
+| 上下文传递 | 步骤间通过 `run.context` 传递数据 |
+| 自动触发钩子 | `check_and_trigger_workflows()` 检查匹配的工作流 |
+
+#### API
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/v1/workflows` | 工作流列表 |
+| `POST /api/v1/workflows` | 创建工作流（含步骤） |
+| `GET /api/v1/workflows/{id}` | 工作流详情（含步骤） |
+| `PUT /api/v1/workflows/{id}` | 更新工作流 |
+| `DELETE /api/v1/workflows/{id}` | 删除工作流 |
+| `POST /api/v1/workflows/{id}/steps` | 添加步骤 |
+| `DELETE /api/v1/workflows/{id}/steps/{step_id}` | 删除步骤 |
+| `POST /api/v1/workflows/{id}/trigger` | 手动触发 |
+| `GET /api/v1/workflows/runs` | 执行记录列表 |
+| `GET /api/v1/workflows/runs/{id}` | 执行记录详情 |
+| `POST /api/v1/workflows/runs/{id}/resume` | 审批后恢复 |
+
+#### MCP 新增工具
+
+| 工具 | 说明 |
+|------|------|
+| `list_workflows` | 列出工作流 |
+| `create_workflow` | 创建工作流（含步骤） |
+| `trigger_workflow` | 手动触发工作流 |
+| `list_workflow_runs` | 查看执行记录 |
+
+#### 前端
+
+| 变更 | 说明 |
+|------|------|
+| 工作流列表页 | 名称 + 触发方式 + 状态 + 触发按钮 |
+| 工作流详情 | 步骤流程图 + 描述信息 |
+| 执行记录 | Timeline 展示，支持审批/拒绝 |
+| 新建弹窗 | 名称 + 触发方式选择 |
+| 侧边栏菜单 | "工作流" + ⚡ 图标 |
+| 路由 | `/projects/{slug}/workflows` |
+
+---
+
 ## [0.5.0] - 2026-05-17
 
 ### Phase 5：看板 + 数据看板（第一阶段 — Stats API + Dashboard 增强）

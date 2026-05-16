@@ -14,6 +14,7 @@ import {
   SwapOutlined,
   AppstoreOutlined,
   BarChartOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useProject } from "../hooks/useProject";
@@ -39,6 +40,7 @@ export default function Layout() {
     { key: `${basePath}/milestones`, icon: <FlagOutlined />, label: "Milestones" },
     { key: `${basePath}/plans`, icon: <ProjectOutlined />, label: "Plans" },
     { key: `${basePath}/servers`, icon: <CloudServerOutlined />, label: "Servers" },
+    { key: `${basePath}/workflows`, icon: <ThunderboltOutlined />, label: "工作流" },
   ];
 
   // 确定当前选中的菜单项

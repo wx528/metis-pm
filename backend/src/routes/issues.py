@@ -101,6 +101,17 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
             project_id=issue.project_id,
         )
 
+    # 检查并触发 on_issue_created 工作流
+    try:
+        from src.core.workflow_engine import check_and_trigger_workflows
+        await check_and_trigger_workflows(
+            db, trigger_type="on_issue_created",
+            project_id=issue.project_id,
+            context={"issue_id": issue.id, "issue_type": issue.issue_type, "priority": issue.priority},
+        )
+    except Exception:
+        pass  # 工作流触发失败不影响 Issue 创建
+
     return issue
 
 

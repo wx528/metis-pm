@@ -8,6 +8,10 @@ from src.models.plan import Plan, PlanStatus, PlanSource
 from src.models.plan_item import PlanItem, PlanItemStatus
 from src.models.activity_log import ActivityLog
 from src.models.server import Server, ServerType, ServerStatus, ServerEnvironment
+from src.models.workflow import (
+    Workflow, WorkflowStep, WorkflowRun,
+    WorkflowTrigger, WorkflowStatus, StepType, OnFailure, WorkflowRunStatus,
+)
 
 __all__ = [
     "Base",
@@ -20,4 +24,6 @@ __all__ = [
     "PlanItem", "PlanItemStatus",
     "ActivityLog",
     "Server", "ServerType", "ServerStatus", "ServerEnvironment",
+    "Workflow", "WorkflowStep", "WorkflowRun",
+    "WorkflowTrigger", "WorkflowStatus", "StepType", "OnFailure", "WorkflowRunStatus",
 ]

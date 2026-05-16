@@ -1,0 +1,273 @@
+"""Phase 6 — 工作流引擎核心"""
+import logging
+from datetime import datetime, timezone
+from typing import Optional, Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from src.models.workflow import (
+    Workflow, WorkflowStep, WorkflowRun,
+    WorkflowStatus, WorkflowRunStatus, StepType, OnFailure,
+)
+from src.models.notification import NotificationType
+from src.core.notification import create_notification
+
+logger = logging.getLogger(__name__)
+
+
+class WorkflowEngine:
+    """轻量级工作流引擎：trigger → execute_steps → wait_approval → resume"""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def trigger(
+        self,
+        workflow: Workflow,
+        triggered_by: str = "system",
+        initial_context: Optional[dict] = None,
+    ) -> WorkflowRun:
+        """触发工作流，创建 Run 并开始执行"""
+        run = WorkflowRun(
+            workflow_id=workflow.id,
+            triggered_by=triggered_by,
+            status=WorkflowRunStatus.RUNNING,
+            current_step_index=0,
+            context=initial_context or {},
+        )
+        self.db.add(run)
+        await self.db.commit()
+        await self.db.refresh(run)
+
+        # 异步执行步骤（简化版：同步执行到 wait 或完成）
+        await self._execute_steps(run, workflow)
+        return run
+
+    async def resume(self, run: WorkflowRun, approved: bool = True, approved_by: str = "admin") -> WorkflowRun:
+        """恢复暂停的工作流（审批后继续）"""
+        if not approved:
+            run.status = WorkflowRunStatus.ABORTED
+            run.completed_at = datetime.now(timezone.utc)
+            run.context = run.context or {}
+            run.context["approval_result"] = "rejected"
+            run.context["approved_by"] = approved_by
+            await self.db.commit()
+            await self.db.refresh(run)
+
+            # 通知触发者
+            await create_notification(
+                self.db,
+                recipient=run.triggered_by or "admin",
+                type=NotificationType.INFO,
+                title=f"工作流执行已被拒绝",
+                body=f"WorkflowRun #{run.id} 被 {approved_by} 拒绝",
+                entity_type="workflow_run",
+                entity_id=run.id,
+                created_by=approved_by,
+            )
+            return run
+
+        # 审批通过，继续执行
+        run.context = run.context or {}
+        run.context["approval_result"] = "approved"
+        run.context["approved_by"] = approved_by
+        run.current_step_index += 1  # 跳过 wait_approval 步骤
+        run.status = WorkflowRunStatus.RUNNING
+        await self.db.commit()
+        await self.db.refresh(run)
+
+        # 重新加载 workflow 和 steps
+        result = await self.db.execute(
+            select(Workflow).where(Workflow.id == run.workflow_id).options(selectinload(Workflow.steps))
+        )
+        workflow = result.scalar_one()
+        await self._execute_steps(run, workflow)
+        return run
+
+    async def _execute_steps(self, run: WorkflowRun, workflow: Workflow) -> None:
+        """执行工作流步骤"""
+        steps = sorted(workflow.steps, key=lambda s: s.sort_order)
+
+        while run.current_step_index < len(steps):
+            step = steps[run.current_step_index]
+
+            try:
+                result = await self._execute_step(step, run, workflow)
+
+                if step.step_type == StepType.WAIT_APPROVAL:
+                    # 暂停执行，等待人类审批
+                    run.status = WorkflowRunStatus.WAITING_APPROVAL
+                    await self.db.commit()
+                    await self.db.refresh(run)
+                    return
+
+                # 将步骤结果存入上下文
+                run.context = run.context or {}
+                run.context[f"step_{step.id}_result"] = result
+                run.current_step_index += 1
+                await self.db.commit()
+
+            except Exception as e:
+                logger.error(f"Workflow step {step.id} failed: {e}")
+                run.error_message = str(e)
+
+                if step.on_failure == OnFailure.ABORT:
+                    run.status = WorkflowRunStatus.FAILED
+                    run.completed_at = datetime.now(timezone.utc)
+                    await self.db.commit()
+                    return
+                elif step.on_failure == OnFailure.SKIP:
+                    run.current_step_index += 1
+                    await self.db.commit()
+                elif step.on_failure == OnFailure.NOTIFY_HUMAN:
+                    await create_notification(
+                        self.db,
+                        recipient="admin",
+                        type=NotificationType.WORKFLOW_PAUSED,
+                        title=f"工作流步骤执行失败: {step.name or step.step_type}",
+                        body=f"WorkflowRun #{run.id} 步骤 {run.current_step_index + 1} 失败: {e}",
+                        entity_type="workflow_run",
+                        entity_id=run.id,
+                        created_by="system",
+                        project_id=workflow.project_id,
+                    )
+                    run.status = WorkflowRunStatus.FAILED
+                    run.completed_at = datetime.now(timezone.utc)
+                    await self.db.commit()
+                    return
+                else:
+                    # RETRY — 简化实现，直接标记失败
+                    run.status = WorkflowRunStatus.FAILED
+                    run.completed_at = datetime.now(timezone.utc)
+                    await self.db.commit()
+                    return
+
+        # 所有步骤执行完毕
+        run.status = WorkflowRunStatus.COMPLETED
+        run.completed_at = datetime.now(timezone.utc)
+        await self.db.commit()
+
+    async def _execute_step(self, step: WorkflowStep, run: WorkflowRun, workflow: Workflow) -> dict:
+        """执行单个步骤"""
+        config = step.config or {}
+        ctx = run.context or {}
+
+        if step.step_type == StepType.CREATE_ISSUE:
+            from src.models.issue import Issue, IssueType, IssuePriority, IssueSource
+            issue = Issue(
+                title=config.get("title", f"Workflow auto-created issue"),
+                description=config.get("description", f"Created by workflow #{workflow.id}"),
+                issue_type=config.get("issue_type", "task"),
+                priority=config.get("priority", "P2"),
+                source=IssueSource.AI_AGENT,
+                project_id=workflow.project_id,
+                milestone_id=config.get("milestone_id"),
+            )
+            self.db.add(issue)
+            await self.db.flush()
+            return {"issue_id": issue.id, "issue_title": issue.title}
+
+        elif step.step_type == StepType.UPDATE_ISSUE:
+            from src.models.issue import Issue, IssueStatus
+            issue_id = config.get("issue_id") or ctx.get("issue_id")
+            if not issue_id:
+                raise ValueError("No issue_id in config or context")
+            result = await self.db.execute(select(Issue).where(Issue.id == issue_id))
+            issue = result.scalar_one_or_none()
+            if not issue:
+                raise ValueError(f"Issue #{issue_id} not found")
+            if "status" in config:
+                issue.status = config["status"]
+            if "priority" in config:
+                issue.priority = config["priority"]
+            await self.db.flush()
+            return {"issue_id": issue.id, "updated_fields": list(config.keys())}
+
+        elif step.step_type == StepType.NOTIFY:
+            await create_notification(
+                self.db,
+                recipient=config.get("recipient", "admin"),
+                type=NotificationType.INFO,
+                title=config.get("title", "工作流通知"),
+                body=config.get("body", ""),
+                entity_type=config.get("entity_type"),
+                entity_id=config.get("entity_id"),
+                created_by="workflow",
+                project_id=workflow.project_id,
+            )
+            return {"notified": config.get("recipient", "admin")}
+
+        elif step.step_type == StepType.WAIT_APPROVAL:
+            # 通知 admin 审批
+            await create_notification(
+                self.db,
+                recipient="admin",
+                type=NotificationType.APPROVAL_NEEDED,
+                title=config.get("title", f"工作流等待审批: {workflow.name}"),
+                body=config.get("body", f"WorkflowRun #{run.id} 等待您的审批"),
+                entity_type="workflow_run",
+                entity_id=run.id,
+                created_by=run.triggered_by or "system",
+                project_id=workflow.project_id,
+            )
+            return {"waiting": True}
+
+        elif step.step_type == StepType.PROPOSE_PLAN:
+            from src.models.plan import Plan, PlanStatus, PlanSource
+            plan = Plan(
+                title=config.get("title", f"Workflow proposed plan"),
+                description=config.get("description", f"Proposed by workflow #{workflow.id}"),
+                status=PlanStatus.PENDING_APPROVAL,
+                proposed_by=PlanSource.AI_AGENT,
+                project_id=workflow.project_id,
+            )
+            self.db.add(plan)
+            await self.db.flush()
+            return {"plan_id": plan.id, "plan_title": plan.title}
+
+        else:
+            raise ValueError(f"Unknown step type: {step.step_type}")
+
+
+async def check_and_trigger_workflows(
+    db: AsyncSession,
+    trigger_type: str,
+    project_id: Optional[int],
+    context: Optional[dict] = None,
+) -> list[WorkflowRun]:
+    """检查是否有匹配的工作流需要触发"""
+    result = await db.execute(
+        select(Workflow)
+        .where(
+            Workflow.trigger == trigger_type,
+            Workflow.status == WorkflowStatus.ACTIVE,
+            Workflow.project_id == project_id if project_id else True,
+        )
+        .options(selectinload(Workflow.steps))
+    )
+    workflows = result.scalars().all()
+
+    runs = []
+    engine = WorkflowEngine(db)
+
+    for workflow in workflows:
+        # 检查 trigger_config 过滤条件
+        if workflow.trigger_config and context:
+            match = True
+            for key, value in workflow.trigger_config.items():
+                if context.get(key) != value:
+                    match = False
+                    break
+            if not match:
+                continue
+
+        try:
+            run = await engine.trigger(workflow, triggered_by="auto_trigger", initial_context=context)
+            runs.append(run)
+            logger.info(f"Triggered workflow #{workflow.id} '{workflow.name}' (run #{run.id})")
+        except Exception as e:
+            logger.error(f"Failed to trigger workflow #{workflow.id}: {e}")
+
+    return runs

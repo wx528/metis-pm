@@ -191,10 +191,18 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
             project_id=plan.project_id,
         )
 
+    # 检查并触发 on_plan_approved 工作流
+    try:
+        from src.core.workflow_engine import check_and_trigger_workflows
+        await check_and_trigger_workflows(
+            db, trigger_type="on_plan_approved",
+            project_id=plan.project_id,
+            context={"plan_id": plan.id, "plan_title": plan.title},
+        )
+    except Exception:
+        pass
+
     return plan
-
-
-@router.post("/{plan_id}/reject", response_model=PlanRead)
 async def reject_plan(plan_id: int, reason: Optional[str] = None, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()

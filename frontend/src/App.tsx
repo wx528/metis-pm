@@ -8,6 +8,7 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Board from "./pages/Board";
+import Workflows from "./pages/Workflows";
 import Issues from "./pages/Issues";
 import IssueDetail from "./pages/IssueDetail";
 import Milestones from "./pages/Milestones";
@@ -57,6 +58,7 @@ function App() {
               <Route path="projects/:projectSlug/plans" element={<Plans />} />
               <Route path="projects/:projectSlug/plans/:id" element={<PlanDetail />} />
               <Route path="projects/:projectSlug/servers" element={<Servers />} />
+              <Route path="projects/:projectSlug/workflows" element={<Workflows />} />
             </Route>
           </Routes>
         </BrowserRouter>

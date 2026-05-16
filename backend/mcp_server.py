@@ -442,6 +442,96 @@ async def mark_notification_read(notification_id: int) -> str:
         return f"Notification #{notification_id} marked as read"
 
 
+# ── Workflows ──────────────────────────────────────
+
+@mcp.tool()
+async def list_workflows(project_id: Optional[int] = None) -> str:
+    """列出工作流"""
+    params = {}
+    if project_id:
+        params["project_id"] = project_id
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/workflows", headers=await get_headers(), params=params)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        items = resp.json()
+        if not items:
+            return "No workflows found."
+        lines = [f"Total: {len(items)} workflows"]
+        for item in items:
+            trigger = item.get('trigger', '?')
+            status = item.get('status', '?')
+            steps_count = len(item.get('steps', [])) if 'steps' in item else '?'
+            lines.append(f"  #{item['id']} [{status}] {item['name']} (trigger={trigger}, steps={steps_count})")
+        return "\n".join(lines)
+
+
+@mcp.tool()
+async def create_workflow(
+    name: str,
+    trigger: str = "manual",
+    project_id: Optional[int] = None,
+    description: str = "",
+    steps: str = "",
+) -> str:
+    """创建工作流。trigger: on_issue_created/on_plan_approved/manual。steps 为 JSON 数组字符串，每项含 step_type 和 config。"""
+    payload = {
+        "name": name,
+        "description": description,
+        "trigger": trigger,
+    }
+    if project_id:
+        payload["project_id"] = project_id
+    if steps:
+        import json
+        try:
+            payload["steps"] = json.loads(steps)
+        except json.JSONDecodeError:
+            return "Error: steps must be a valid JSON array string"
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{API_BASE}/workflows", headers=await get_headers(), json=payload)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+        step_info = f" with {len(data.get('steps', []))} steps" if data.get('steps') else ""
+        return f"Workflow #{data['id']} created: {data['name']} (trigger={data['trigger']}){step_info}"
+
+
+@mcp.tool()
+async def trigger_workflow(workflow_id: int) -> str:
+    """手动触发工作流"""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{API_BASE}/workflows/{workflow_id}/trigger",
+            headers=await get_headers(),
+        )
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+        return f"Workflow triggered! Run #{data['id']} (status={data['status']})"
+
+
+@mcp.tool()
+async def list_workflow_runs(workflow_id: Optional[int] = None, limit: int = 10) -> str:
+    """查看工作流执行记录"""
+    params = {"limit": limit}
+    if workflow_id:
+        params["workflow_id"] = workflow_id
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/workflows/runs", headers=await get_headers(), params=params)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        items = resp.json()
+        if not items:
+            return "No workflow runs found."
+        lines = [f"Total: {len(items)} runs"]
+        for item in items:
+            wf_name = item.get('workflow_name', '?')
+            lines.append(f"  Run #{item['id']} [{item['status']}] {wf_name} (step {item['current_step_index']}, by {item.get('triggered_by', '?')})")
+        return "\n".join(lines)
+
+
 def main():
     """Entry point for installed package."""
     mcp.run(transport="stdio")

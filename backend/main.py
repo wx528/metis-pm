@@ -79,6 +79,16 @@ async def _run_migrations(conn):
                 logger.warning(f"Failed to backfill project_id in {table}: {e}")
         logger.info(f"Backfilled project_id={default_project_id} for existing data")
 
+    # Phase 4.1: notifications 表添加 updated_at 列
+    result = await conn.execute(text("PRAGMA table_info(notifications)"))
+    notif_cols = {row[1] for row in result.fetchall()}
+    if "updated_at" not in notif_cols:
+        try:
+            await conn.execute(text("ALTER TABLE notifications ADD COLUMN updated_at DATETIME"))
+            logger.info("Added updated_at column to notifications")
+        except Exception as e:
+            logger.warning(f"Failed to add updated_at to notifications: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -90,7 +100,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Project Manager",
-    version="0.4.0",
+    version="0.5.0",
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
@@ -108,4 +118,4 @@ app.include_router(api_router)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "app": "project_manager", "version": "0.4.0"}
+    return {"status": "ok", "app": "project_manager", "version": "0.5.0"}

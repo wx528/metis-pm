@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func, case
 
 from src.core.dependencies import get_db
+from src.core.activity import log_activity
 from src.models.milestone import Milestone
 from src.models.issue import Issue, IssueStatus
 from src.schemas.milestone import MilestoneCreate, MilestoneUpdate, MilestoneRead, MilestoneReadWithStats
@@ -60,12 +61,19 @@ async def list_milestones(
 
 
 @router.post("", response_model=MilestoneRead, status_code=201)
-async def create_milestone(data: MilestoneCreate, db: AsyncSession = Depends(get_db)):
+async def create_milestone(data: MilestoneCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     """创建里程碑"""
     milestone = Milestone(**data.model_dump())
     db.add(milestone)
     await db.commit()
     await db.refresh(milestone)
+
+    await log_activity(
+        db, entity_type="milestone", entity_id=milestone.id,
+        actor=user["sub"], action="created",
+        new_value={"title": milestone.title, "status": milestone.status},
+        project_id=milestone.project_id,
+    )
     return milestone
 
 
@@ -106,7 +114,7 @@ async def get_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{milestone_id}", response_model=MilestoneRead)
-async def update_milestone(milestone_id: int, data: MilestoneUpdate, db: AsyncSession = Depends(get_db)):
+async def update_milestone(milestone_id: int, data: MilestoneUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     """更新里程碑"""
     result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
     milestone = result.scalar_one_or_none()
@@ -119,11 +127,18 @@ async def update_milestone(milestone_id: int, data: MilestoneUpdate, db: AsyncSe
 
     await db.commit()
     await db.refresh(milestone)
+
+    await log_activity(
+        db, entity_type="milestone", entity_id=milestone.id,
+        actor=user["sub"], action="updated",
+        new_value=update_data,
+        project_id=milestone.project_id,
+    )
     return milestone
 
 
 @router.delete("/{milestone_id}", status_code=204)
-async def delete_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_milestone(milestone_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     """删除里程碑"""
     result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
     milestone = result.scalar_one_or_none()
@@ -139,6 +154,12 @@ async def delete_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)
             detail="Cannot delete milestone with linked issues. Remove or reassign issues first.",
         )
 
+    await log_activity(
+        db, entity_type="milestone", entity_id=milestone.id,
+        actor=user["sub"], action="deleted",
+        old_value={"title": milestone.title, "status": milestone.status},
+        project_id=milestone.project_id,
+    )
     await db.delete(milestone)
     await db.commit()
     return None

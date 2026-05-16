@@ -37,7 +37,7 @@ docs/issues/
 | 011 | 所有 Model 的 datetime.utcnow 无时区 | P1 | **fixed** | v0.2.0 |
 | 013 | 测试全部未认证，无法通过 | P1 | **fixed** | v0.2.0 |
 | 020 | PlanItem/Plan/Milestone schema 缺少枚举校验 | P1 | **fixed** | v0.2.0 |
-| N002 | Milestone 路由缺少 ActivityLog 记录 | P2 | later | — |
+| N002 | Milestone 路由缺少 ActivityLog 记录 | P2 | **fixed** | v0.5.0 |
 
 ### 🎨 用户体验 (ux)
 
@@ -74,7 +74,7 @@ docs/issues/
 
 | # | 标题 | 优先级 | 状态 | 修复版本 |
 |---|------|--------|------|----------|
-| N005 | Notification 缺少 updated_at 字段 | P2 | later | — |
+| N005 | Notification 缺少 updated_at 字段 | P2 | **fixed** | v0.5.0 |
 | N006 | 前端 SSE 解析不健壮 | P2 | later | — |
 
 ---
@@ -86,10 +86,8 @@ docs/issues/
 | # | 标题 | 优先级 | 类型 | 目标版本 |
 |---|------|--------|------|----------|
 | N001 | SSE 跨 Worker 广播 | P1 | performance | v0.5.0 |
-| N002 | Milestone 缺少 ActivityLog | P2 | bug | v0.5.0 |
 | N003 | project_id nullable 孤立数据 | P2 | data-integrity | v0.5.0+ |
 | N004 | SSE 连接内存泄漏与超时清理 | P2 | performance | v0.5.0 |
-| N005 | Notification 缺少 updated_at | P2 | architecture | v0.5.0 |
 | N006 | 前端 SSE 解析不健壮 | P2 | architecture | v0.5.0 |
 
 ---
@@ -98,17 +96,17 @@ docs/issues/
 
 | 状态 | 数量 |
 |------|------|
-| 已修复 (done/) | 20 |
-| 待后续处理 (later/) | 6 |
+| 已修复 (done/) | 22 |
+| 待后续处理 (later/) | 4 |
 | 待评估 (new/) | 0 |
 | **合计** | **26** |
 
 | 类型 | 已修复 | 待处理 |
 |------|--------|--------|
 | security | 6 | 0 |
-| bug | 6 | 1 |
+| bug | 7 | 0 |
 | ux | 2 | 0 |
 | performance | 1 | 2 |
 | code-quality | 4 | 0 |
 | data-integrity | 1 | 1 |
-| architecture | 0 | 2 |
+| architecture | 1 | 1 |

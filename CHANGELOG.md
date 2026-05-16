@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.0] - 2026-05-17
+
+### Phase 5：看板 + 数据看板（第一阶段 — Stats API + Dashboard 增强）
+
+#### Stats API（4 个统计端点）
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/v1/stats/agent-productivity` | Agent 产出统计：按 actor 统计创建/完成的 Issue 数，支持 week/month/all |
+| `GET /api/v1/stats/issue-resolution` | Issue 解决时长：平均值/中位数/P90，按类型分组 |
+| `GET /api/v1/stats/plan-completion` | Plan 完成率：环形进度 + 按 Plan 分项统计 |
+| `GET /api/v1/stats/agent-activity` | Agent 活跃度：每日操作次数时序 + 操作类型分布 |
+
+#### Dashboard 增强
+
+| 变更 | 说明 |
+|------|------|
+| Agent 产出对比 | 水平柱状图显示各 Agent 创建/完成的 Issue 数 |
+| Plan 完成率 | 环形进度图 + 分项进度条 |
+| 时间筛选 | 本周/本月/全部 切换 |
+
+#### Bug 修复 & 补全
+
+| 变更 | 说明 |
+|------|------|
+| Milestone ActivityLog | 创建/更新/删除里程碑时记录活动日志（N002） |
+| Notification.updated_at | 新增 updated_at 字段 + 数据库迁移（N005） |
+| 前端 Notification 类型 | 补充 updated_at 字段 |
+
+---
+
 ## [0.4.1] - 2026-05-17
 
 ### v0.4.0 评审修复

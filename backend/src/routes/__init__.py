@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications
+from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -13,3 +13,4 @@ api_router.include_router(plans.router, prefix="/plans", tags=["计划管理"])
 api_router.include_router(servers.router, prefix="/servers", tags=["服务器管理"])
 api_router.include_router(activity_logs.router, prefix="/activity-logs", tags=["活动日志"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["通知"])
+api_router.include_router(stats.router, prefix="/stats", tags=["统计分析"])

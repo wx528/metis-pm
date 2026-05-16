@@ -30,5 +30,6 @@ class Notification(Base):
     created_by = Column(String(100), nullable=True)   # 触发者身份
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     project = relationship("Project", foreign_keys=[project_id])

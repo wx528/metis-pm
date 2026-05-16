@@ -27,6 +27,7 @@ class NotificationRead(BaseModel):
     created_by: Optional[str] = None
     project_id: Optional[int] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

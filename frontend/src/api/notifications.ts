@@ -12,6 +12,7 @@ export interface Notification {
   created_by: string | null;
   project_id: number | null;
   created_at: string;
+  updated_at: string | null;
 }
 
 export interface NotificationListResponse {

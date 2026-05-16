@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Row, Col, Card, Statistic, List, Tag, Spin, Timeline } from "antd";
+import { Row, Col, Card, Statistic, List, Tag, Spin, Timeline, Progress, Select, Empty } from "antd";
 import {
   BugOutlined,
   ProjectOutlined,
@@ -16,7 +16,9 @@ import {
   MessageOutlined,
 } from "@ant-design/icons";
 import { dashboardApi } from "../api/dashboard";
+import { statsApi } from "../api/stats";
 import type { DashboardData } from "../api";
+import type { AgentProductivity, PlanCompletion } from "../api/stats";
 import { useProject } from "../hooks/useProject";
 
 const actionIcons: Record<string, React.ReactNode> = {
@@ -39,23 +41,59 @@ const actionLabels: Record<string, string> = {
   completed: "完成",
 };
 
+// 简易柱状图组件
+function SimpleBarChart({ data, valueKey, labelKey, color }: { data: any[]; valueKey: string; labelKey: string; color: string }) {
+  if (!data.length) return <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  const maxVal = Math.max(...data.map((d) => d[valueKey] as number), 1);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {data.map((d, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 80, textAlign: "right", fontSize: 13, color: "#666", flexShrink: 0 }}>{d[labelKey]}</span>
+          <div
+            style={{
+              height: 20,
+              width: `${((d[valueKey] as number) / maxVal) * 100}%`,
+              minWidth: 2,
+              background: color,
+              borderRadius: 4,
+              transition: "width 0.3s",
+            }}
+          />
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{d[valueKey]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [productivity, setProductivity] = useState<AgentProductivity | null>(null);
+  const [planCompletion, setPlanCompletion] = useState<PlanCompletion | null>(null);
+  const [period, setPeriod] = useState<string>("all");
   const { currentProject } = useProject();
 
   useEffect(() => {
+    if (!currentProject) return;
     const fetch = async () => {
+      setLoading(true);
       try {
-        const params = currentProject ? { project_id: currentProject.id } : {};
-        const res = await dashboardApi.get(params);
-        setData(res.data);
+        const [dashboardRes, prodRes, planRes] = await Promise.all([
+          dashboardApi.get({ project_id: currentProject.id }),
+          statsApi.agentProductivity(currentProject.id, period),
+          statsApi.planCompletion(currentProject.id),
+        ]);
+        setData(dashboardRes.data);
+        setProductivity(prodRes);
+        setPlanCompletion(planRes);
       } finally {
         setLoading(false);
       }
     };
     fetch();
-  }, [currentProject]);
+  }, [currentProject, period]);
 
   if (loading || !data) return <Spin size="large" style={{ display: "block", margin: "100px auto" }} />;
 
@@ -74,6 +112,12 @@ export default function Dashboard() {
     closed: "success",
     cancelled: "default",
   };
+
+  const actorColorMap: Record<string, string> = {};
+  const barColors = ["#1890ff", "#52c41a", "#722ed1", "#fa8c16", "#eb2f96", "#13c2c2"];
+  productivity?.agents.forEach((a, i) => {
+    actorColorMap[a.actor] = barColors[i % barColors.length];
+  });
 
   return (
     <div>
@@ -133,6 +177,91 @@ export default function Dashboard() {
         <Col span={4}>
           <Card>
             <Statistic title="总 Issues" value={data.issues.total} prefix={<BugOutlined />} />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Agent 产出对比 + Plan 完成率 */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={14}>
+          <Card
+            title="Agent 产出对比"
+            extra={
+              <Select value={period} onChange={setPeriod} size="small" style={{ width: 100 }}>
+                <Select.Option value="week">本周</Select.Option>
+                <Select.Option value="month">本月</Select.Option>
+                <Select.Option value="all">全部</Select.Option>
+              </Select>
+            }
+          >
+            {productivity && productivity.agents.length > 0 ? (
+              <div>
+                <div style={{ marginBottom: 12, fontSize: 12, color: "#999" }}>
+                  <span style={{ display: "inline-block", width: 10, height: 10, background: "#1890ff", borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} />
+                  创建
+                  <span style={{ display: "inline-block", width: 10, height: 10, background: "#52c41a", borderRadius: 2, marginLeft: 16, marginRight: 4, verticalAlign: "middle" }} />
+                  完成
+                </div>
+                {(() => {
+                  const maxVal = Math.max(...productivity.agents.flatMap((a) => [a.created, a.completed]), 1);
+                  return productivity.agents.map((agent) => (
+                    <div key={agent.actor} style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                        <Tag color={actorColorMap[agent.actor] || "blue"}>{agent.actor}</Tag>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                        <span style={{ width: 36, fontSize: 11, color: "#999" }}>创建</span>
+                        <div style={{ flex: 1, background: "#f0f0f0", borderRadius: 4, height: 16, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${(agent.created / maxVal) * 100}%`, background: "#1890ff", borderRadius: 4, transition: "width 0.3s", minWidth: agent.created > 0 ? 4 : 0 }} />
+                        </div>
+                        <span style={{ width: 30, fontSize: 12, fontWeight: 500 }}>{agent.created}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 36, fontSize: 11, color: "#999" }}>完成</span>
+                        <div style={{ flex: 1, background: "#f0f0f0", borderRadius: 4, height: 16, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${(agent.completed / maxVal) * 100}%`, background: "#52c41a", borderRadius: 4, transition: "width 0.3s", minWidth: agent.completed > 0 ? 4 : 0 }} />
+                        </div>
+                        <span style={{ width: 30, fontSize: 12, fontWeight: 500 }}>{agent.completed}</span>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            ) : (
+              <Empty description="暂无产出数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
+          </Card>
+        </Col>
+        <Col span={10}>
+          <Card title="Plan 完成率">
+            {planCompletion && planCompletion.total_plans > 0 ? (
+              <div>
+                <div style={{ textAlign: "center", marginBottom: 16 }}>
+                  <Progress
+                    type="circle"
+                    percent={planCompletion.overall_completion_rate}
+                    format={() => `${planCompletion.overall_completion_rate}%`}
+                    size={100}
+                  />
+                  <div style={{ marginTop: 8, fontSize: 13, color: "#666" }}>
+                    {planCompletion.total_done_items} / {planCompletion.total_items} 项已完成
+                  </div>
+                </div>
+                <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                  {planCompletion.plans.slice(0, 5).map((plan) => (
+                    <div key={plan.id} style={{ marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                        <span>{plan.title}</span>
+                        <span style={{ color: "#999" }}>{plan.done_items}/{plan.total_items}</span>
+                      </div>
+                      <Progress percent={plan.completion_rate} size="small" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <Empty description="暂无计划数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
           </Card>
         </Col>
       </Row>

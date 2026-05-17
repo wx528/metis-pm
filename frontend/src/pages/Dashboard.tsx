@@ -41,31 +41,6 @@ const actionLabels: Record<string, string> = {
   completed: "完成",
 };
 
-// 简易柱状图组件
-function SimpleBarChart({ data, valueKey, labelKey, color }: { data: any[]; valueKey: string; labelKey: string; color: string }) {
-  if (!data.length) return <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-  const maxVal = Math.max(...data.map((d) => d[valueKey] as number), 1);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {data.map((d, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ width: 80, textAlign: "right", fontSize: 13, color: "#666", flexShrink: 0 }}>{d[labelKey]}</span>
-          <div
-            style={{
-              height: 20,
-              width: `${((d[valueKey] as number) / maxVal) * 100}%`,
-              minWidth: 2,
-              background: color,
-              borderRadius: 4,
-              transition: "width 0.3s",
-            }}
-          />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>{d[valueKey]}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);

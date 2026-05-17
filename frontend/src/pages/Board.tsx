@@ -8,11 +8,10 @@ import {
   useSensors,
   type DragStartEvent,
   type DragEndEvent,
-  type DragOverEvent,
+
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Card, Tag, Select, Spin, Empty, message, Space } from "antd";
-import { RobotOutlined, UserOutlined, TeamOutlined } from "@ant-design/icons";
+import { Select, Spin, message, Space } from "antd";
 import { issuesApi } from "../api/issues";
 import { milestonesApi } from "../api/milestones";
 import { useProject } from "../hooks/useProject";
@@ -74,7 +73,7 @@ export default function Board() {
         milestone_id: filterMilestone,
         limit: 200,
       });
-      setIssues(res.data.items as IssueItem[]);
+      setIssues(res.data.items as unknown as IssueItem[]);
     } finally {
       setLoading(false);
     }

@@ -13,7 +13,7 @@ import {
   CheckOutlined,
   SwapOutlined,
   AppstoreOutlined,
-  BarChartOutlined,
+
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";

@@ -95,13 +95,37 @@ async def list_projects() -> str:
             return f"Error: {resp.status_code} - {resp.text}"
         items = resp.json()
         if not items:
-            return "No projects found. Create one with the project manager web UI."
+            return "No projects found. Create one with create_project tool."
         lines = [f"Total: {len(items)} projects"]
         for item in items:
             status = item.get("status", "?")
             stats = f" ({item.get('issue_count',0)} issues, {item.get('plan_count',0)} plans, {item.get('milestone_count',0)} milestones, {item.get('server_count',0)} servers)"
             lines.append(f"  #{item['id']} [{status}] {item['name']} (slug={item['slug']}){stats}")
         return "\n".join(lines)
+
+
+@mcp.tool()
+async def create_project(
+    name: str,
+    slug: str,
+    description: str = "",
+    repo_url: str = "",
+) -> str:
+    """创建新项目。slug 只允许小写字母、数字和连字符，如 my-project-1"""
+    payload = {
+        "name": name,
+        "slug": slug,
+    }
+    if description:
+        payload["description"] = description
+    if repo_url:
+        payload["repo_url"] = repo_url
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{API_BASE}/projects", headers=await get_headers(), json=payload)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+        return f"Project #{data['id']} created: {data['name']} (slug={data['slug']}, status={data['status']})"
 
 
 # ── Issues ─────────────────────────────────────────
@@ -253,11 +277,10 @@ async def add_issue_comment(issue_id: int, content: str) -> str:
 async def propose_plan(title: str, description: str = "", project_id: Optional[int] = None) -> str:
     """提议一个新计划（状态为 pending_approval，等待用户审批）"""
     headers = await get_headers()
-    agent_name = _token_cache.get("sub", "ai_agent")
     payload = {
         "title": title,
         "description": description,
-        "proposed_by": agent_name,
+        "proposed_by": "ai_agent",
         "status": "pending_approval",
     }
     if project_id:
@@ -362,6 +385,33 @@ async def list_milestones(project_id: Optional[int] = None) -> str:
             stats = f"\n    统计: {item.get('total_issues',0)} issues ({item.get('open_issues',0)} open, {item.get('closed_issues',0)} closed, {item.get('deferred_issues',0)} deferred)"
             lines.append(f"  #{item['id']} [{item['status']}] {item['title']}{phase}{desc}{due}{stats}")
         return "\n".join(lines)
+
+
+@mcp.tool()
+async def create_milestone(
+    title: str,
+    phase: str = "",
+    description: str = "",
+    project_id: Optional[int] = None,
+    due_date: str = "",
+) -> str:
+    """创建里程碑/阶段。phase 如 phase-1/MVP 等，due_date 格式 YYYY-MM-DD"""
+    payload = {"title": title}
+    if phase:
+        payload["phase"] = phase
+    if description:
+        payload["description"] = description
+    if project_id:
+        payload["project_id"] = project_id
+    if due_date:
+        payload["due_date"] = due_date
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{API_BASE}/milestones", headers=await get_headers(), json=payload)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+        phase_info = f" (phase={data['phase']})" if data.get('phase') else ""
+        return f"Milestone #{data['id']} created: {data['title']}{phase_info} (status={data['status']})"
 
 
 # ── Servers ────────────────────────────────────────

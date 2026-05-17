@@ -7,7 +7,7 @@ import {
   PlusOutlined, PlayCircleOutlined, ThunderboltOutlined,
   CheckCircleOutlined, CloseCircleOutlined,
 } from "@ant-design/icons";
-import { workflowsApi, type Workflow, type WorkflowStep, type WorkflowRun } from "../api/workflows";
+import { workflowsApi, type Workflow, type WorkflowRun } from "../api/workflows";
 import { useProject } from "../hooks/useProject";
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -153,7 +153,7 @@ export default function Workflows() {
               {
                 title: "名称",
                 dataIndex: "name",
-                render: (text: string, record: Workflow) => (
+                render: (text: string, _record: Workflow) => (
                   <Space>
                     <ThunderboltOutlined />
                     <span>{text}</span>
@@ -218,6 +218,7 @@ export default function Workflows() {
                     </div>
                   ),
                 }))}
+            />
             )}
           </Card>
         </div>

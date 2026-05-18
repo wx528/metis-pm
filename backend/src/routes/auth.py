@@ -52,6 +52,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
     return verify_token(credentials)
 
 
+async def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
+    """仅允许 admin 角色访问"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(data: LoginRequest):
     identity = settings.resolve_identity(data.password)

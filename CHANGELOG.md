@@ -1,5 +1,75 @@
 # Changelog
 
+## [0.7.0] - 2026-05-18
+
+### Phase 7：安全治理（P0 修复）
+
+#### P0-1: 服务器凭据 Fernet 加密存储
+
+| 文件 | 变更 |
+|------|------|
+| `backend/src/core/crypto.py` | 新增加密工具模块，Fernet 对称加密/解密 |
+| `backend/src/models/server.py` | password/ssh_key 改为 property，写入自动加密，读取自动解密 |
+| `backend/src/settings.py` | 新增 `ENCRYPTION_KEY` 配置项 |
+| `backend/.env.example` | 新增 `ENCRYPTION_KEY` 说明 |
+| `backend/main.py` | 迁移：自动加密已有明文凭据 |
+| `backend/requirements.txt` | 新增 `cryptography>=42.0.0` 依赖 |
+
+#### P0-2: 凭据 API 角色权限控制 + 审计日志
+
+| 文件 | 变更 |
+|------|------|
+| `backend/src/routes/auth.py` | 新增 `get_admin_user` 依赖（仅 admin 角色可访问） |
+| `backend/src/routes/servers.py` | `GET /servers/{id}/credentials` 限制 admin 角色 + 审计日志记录 |
+
+#### P0-3: MCP 工具不再返回明文凭据
+
+| 文件 | 变更 |
+|------|------|
+| `backend/mcp_server.py` | `get_server_credentials` 改为仅返回凭据元数据（是否已设置），不再返回明文密码/SSH Key |
+
+#### P0-4: CORS 配置收紧
+
+| 文件 | 变更 |
+|------|------|
+| `backend/main.py` | `allow_methods` 从 `["*"]` 改为 `["GET", "POST", "PUT", "DELETE", "OPTIONS"]`，`allow_headers` 从 `["*"]` 改为 `["Authorization", "Content-Type"]` |
+
+### P1 修复
+
+#### P1-7: 工作流 RETRY 策略实现指数退避重试
+
+| 文件 | 变更 |
+|------|------|
+| `backend/src/core/workflow_engine.py` | `on_failure=RETRY` 实现指数退避重试（最多 3 次，延迟 2/4/8 秒），不再直接标记失败 |
+
+#### P1-9: MCP Token 缓存 401 自动重试
+
+| 文件 | 变更 |
+|------|------|
+| `backend/mcp_server.py` | 新增 `_api_request()` 统一请求函数，401 时自动清缓存 → 重新登录 → 重试一次 |
+
+### P2 修复
+
+#### P2-11: MCP 错误处理统一
+
+| 文件 | 变更 |
+|------|------|
+| `backend/mcp_server.py` | 所有 MCP 工具统一使用 `_api_request()` 发送请求，替代散落的 `httpx.AsyncClient` 直接调用 |
+
+#### P2-13: check_server 实现 TCP 连通性检查
+
+| 文件 | 变更 |
+|------|------|
+| `backend/src/routes/servers.py` | `POST /servers/{id}/check` 新增 TCP 连通性测试：可连通时恢复 active，不可连通时标记 offline |
+
+### 其他改进
+
+| 文件 | 变更 |
+|------|------|
+| `backend/tests/test_security.py` | 新增 25 个安全测试（加密/解密、权限控制、审计日志、CORS、JWT） |
+| `backend/pytest.ini` | 修复 `[tool:pytest]` → `[pytest]`，使 `asyncio_mode=auto` 正确生效 |
+| `backend/tests/conftest.py` | 新增 `AGENT_PASSWORDS` 和 `ENCRYPTION_KEY` 环境变量 |
+
 ## [0.6.0] - 2026-05-17
 
 ### Phase 6：工作流引擎

@@ -7,6 +7,7 @@ from sqlalchemy import text
 from src.core.database import engine, Base
 from src.routes import api_router
 from src.settings import settings
+from src.core.crypto import encrypt_value
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,34 @@ async def _run_migrations(conn):
         except Exception as e:
             logger.warning(f"Failed to add updated_at to notifications: {e}")
 
+    # Phase 6.1: 加密已有明文凭据（password / ssh_key）
+    if settings.ENCRYPTION_KEY:
+        try:
+            # 检查是否已经完成加密迁移（用 _credentials_encrypted 标记列判断）
+            result = await conn.execute(text("PRAGMA table_info(servers)"))
+            server_cols = {row[1] for row in result.fetchall()}
+            if "_credentials_encrypted" not in server_cols:
+                await conn.execute(text("ALTER TABLE servers ADD COLUMN _credentials_encrypted INTEGER DEFAULT 0"))
+                logger.info("Added _credentials_encrypted column to servers")
+
+            # 加密未标记的行
+            result = await conn.execute(
+                text("SELECT id, password, ssh_key FROM servers WHERE _credentials_encrypted = 0")
+            )
+            rows = result.fetchall()
+            for row in rows:
+                sid, pwd, key = row
+                enc_pwd = encrypt_value(pwd) if pwd else None
+                enc_key = encrypt_value(key) if key else None
+                await conn.execute(
+                    text("UPDATE servers SET password = :pwd, ssh_key = :key, _credentials_encrypted = 1 WHERE id = :id"),
+                    {"pwd": enc_pwd, "key": enc_key, "id": sid},
+                )
+            if rows:
+                logger.info(f"Encrypted credentials for {len(rows)} server(s)")
+        except Exception as e:
+            logger.warning(f"Failed to encrypt existing credentials: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,7 +129,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Project Manager",
-    version="0.6.0",
+    version="0.7.0",
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
@@ -109,8 +138,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS.split(","),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(api_router)
@@ -118,4 +147,4 @@ app.include_router(api_router)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "app": "project_manager", "version": "0.6.0"}
+    return {"status": "ok", "app": "project_manager", "version": "0.7.0"}

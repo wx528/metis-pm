@@ -1,12 +1,15 @@
 from typing import List, Optional
+import socket
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
+from datetime import datetime, timezone
 
 from src.core.dependencies import get_db
 from src.models.server import Server
+from src.models.activity_log import ActivityLog
 from src.schemas.server import ServerCreate, ServerUpdate, ServerRead, ServerCredentials
-from src.routes.auth import get_current_user
+from src.routes.auth import get_current_user, get_admin_user
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -83,25 +86,56 @@ async def delete_server(server_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{server_id}/credentials", response_model=ServerCredentials)
-async def get_server_credentials(server_id: int, db: AsyncSession = Depends(get_db)):
-    """获取服务器凭据（单独接口）"""
+async def get_server_credentials(
+    server_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_admin_user),
+):
+    """获取服务器凭据（仅 admin 角色，带审计日志）"""
     result = await db.execute(select(Server).where(Server.id == server_id))
     server = result.scalar_one_or_none()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
+    # 审计日志：记录谁在何时获取了哪台服务器的凭据
+    log = ActivityLog(
+        entity_type="server",
+        entity_id=server_id,
+        action="credentials_viewed",
+        actor=user.get("sub", "unknown"),
+        new_value={"info": f"Credentials viewed by {user.get('sub', 'unknown')}"},
+    )
+    db.add(log)
+    await db.commit()
     return server
 
 
 @router.post("/{server_id}/check", response_model=ServerRead)
 async def check_server(server_id: int, db: AsyncSession = Depends(get_db)):
-    """手动触发服务器状态检查"""
+    """手动触发服务器状态检查（TCP 连通性测试）"""
     result = await db.execute(select(Server).where(Server.id == server_id))
     server = result.scalar_one_or_none()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
 
-    from datetime import datetime, timezone
     server.last_checked_at = datetime.now(timezone.utc)
+
+    # TCP 连通性检查
+    if server.ip_address and server.port:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            sock.connect((server.ip_address, server.port))
+            sock.close()
+            # 可连通，如果之前是 offline 则恢复为 active
+            from src.models.server import ServerStatus
+            if server.status == ServerStatus.OFFLINE:
+                server.status = ServerStatus.ACTIVE
+        except (socket.timeout, socket.error, OSError):
+            # 不可连通，标记为 offline
+            from src.models.server import ServerStatus
+            server.status = ServerStatus.OFFLINE
+    # 无 IP/端口信息时，仅更新 last_checked_at
+
     await db.commit()
     await db.refresh(server)
     return ServerRead.from_orm_with_flags(server)

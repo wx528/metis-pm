@@ -6,7 +6,7 @@
 
 **描述**: `mcp_server.py` 中 `propose_plan` 函数使用 `_token_cache.get("sub", "ai_agent")` 作为 `proposed_by` 的值，实际传入的是 agent 用户名（如 `codebuddy`），但后端 API 的 `proposed_by` 字段是枚举类型，只接受 `user`/`ai_agent`/`collaborative`，导致 422 错误。
 
-**修复**: 将 `proposed_by` 硬编码为 `"ai_agent"`。`mcp_server.py` 第 259 行已改为 `"proposed_by": "ai_agent"`。
+**修复**: 将 `proposed_by` 硬编码为 `"ai_agent"`。`mcp_server.py` 已改为 `"proposed_by": "ai_agent"`。
 
 ---
 
@@ -36,6 +36,4 @@
 
 **描述**: MCP server 有 `list_projects` 但没有 `create_project`，无法通过 MCP 创建项目。AI Agent 只能查询项目但不能创建，严重限制了项目初始化能力。
 
-**修复**: 在 `mcp_server.py` 中添加了 `create_project` 工具，支持 name、slug、description、repo_url 参数。同时将 `list_projects` 的空列表提示从 "Create one with the project manager web UI" 改为 "Create one with create_project tool"。
-
-
+**修复**: 在 `mcp_server.py` 中添加了 `create_project` 工具，支持 name、slug、description、repo_url 参数。

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = ""
     CORS_ORIGINS: str = "http://localhost:5173"
     AGENT_PASSWORDS: str = ""
+    ENCRYPTION_KEY: str = ""  # Fernet key, generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
     @property
     def agent_password_map(self) -> dict[str, str]:

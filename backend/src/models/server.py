@@ -4,6 +4,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
+from src.core.crypto import encrypt_value, decrypt_value
 
 
 class ServerType(str, enum.Enum):
@@ -37,8 +38,9 @@ class Server(Base):
     ip_address = Column(String(100), nullable=True)
     port = Column(Integer, nullable=True)
     username = Column(String(100), nullable=True)
-    password = Column(String(200), nullable=True)       # 明文存储（仅本地/内网）
-    ssh_key = Column(Text, nullable=True)               # SSH 私钥
+    _password = Column("password", String(500), nullable=True)       # Fernet 加密存储
+    _ssh_key = Column("ssh_key", Text, nullable=True)                # Fernet 加密存储
+    _credentials_encrypted = Column("_credentials_encrypted", Integer, default=1)  # 标记凭据是否已加密
     server_type = Column(Enum(ServerType), default=ServerType.OTHER)
     status = Column(Enum(ServerStatus), default=ServerStatus.ACTIVE)
     environment = Column(Enum(ServerEnvironment), default=ServerEnvironment.DEVELOPMENT)
@@ -48,3 +50,19 @@ class Server(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     project = relationship("Project", back_populates="servers", foreign_keys=[project_id])
+
+    @property
+    def password(self) -> str | None:
+        return decrypt_value(self._password)
+
+    @password.setter
+    def password(self, value: str | None):
+        self._password = encrypt_value(value)
+
+    @property
+    def ssh_key(self) -> str | None:
+        return decrypt_value(self._ssh_key)
+
+    @ssh_key.setter
+    def ssh_key(self, value: str | None):
+        self._ssh_key = encrypt_value(value)

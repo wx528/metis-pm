@@ -66,8 +66,8 @@ class ServerRead(BaseModel):
             ip_address=server.ip_address,
             port=server.port,
             username=server.username,
-            has_password=bool(server.password),
-            has_ssh_key=bool(server.ssh_key),
+            has_password=bool(server._password),
+            has_ssh_key=bool(server._ssh_key),
             server_type=server.server_type,
             status=server.status,
             environment=server.environment,
@@ -79,7 +79,7 @@ class ServerRead(BaseModel):
 
 
 class ServerCredentials(BaseModel):
-    """服务器凭据（单独接口返回）"""
+    """服务器凭据（仅 admin 可访问，解密后返回明文）"""
     id: int
     name: str
     ip_address: Optional[str] = None
@@ -87,3 +87,6 @@ class ServerCredentials(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     ssh_key: Optional[str] = None
+
+    class Config:
+        from_attributes = True

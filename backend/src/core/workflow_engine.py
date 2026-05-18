@@ -1,4 +1,5 @@
 """Phase 6 — 工作流引擎核心"""
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Any
@@ -15,6 +16,10 @@ from src.models.notification import NotificationType
 from src.core.notification import create_notification
 
 logger = logging.getLogger(__name__)
+
+# RETRY 策略配置
+MAX_RETRIES = 3
+RETRY_BASE_DELAY_SECONDS = 2  # 指数退避基础延迟
 
 
 class WorkflowEngine:
@@ -138,11 +143,28 @@ class WorkflowEngine:
                     await self.db.commit()
                     return
                 else:
-                    # RETRY — 简化实现，直接标记失败
-                    run.status = WorkflowRunStatus.FAILED
-                    run.completed_at = datetime.now(timezone.utc)
-                    await self.db.commit()
-                    return
+                    # RETRY — 指数退避重试，最多 MAX_RETRIES 次
+                    retry_count = (run.context or {}).get(f"step_{step.id}_retries", 0) + 1
+                    if retry_count <= MAX_RETRIES:
+                        delay = RETRY_BASE_DELAY_SECONDS * (2 ** (retry_count - 1))
+                        logger.warning(
+                            f"Workflow step {step.id} failed (attempt {retry_count}/{MAX_RETRIES}), "
+                            f"retrying in {delay}s: {e}"
+                        )
+                        run.context = run.context or {}
+                        run.context[f"step_{step.id}_retries"] = retry_count
+                        await self.db.commit()
+                        await asyncio.sleep(delay)
+                        # 不递增 current_step_index，重新执行当前步骤
+                        continue
+                    else:
+                        logger.error(
+                            f"Workflow step {step.id} failed after {MAX_RETRIES} retries: {e}"
+                        )
+                        run.status = WorkflowRunStatus.FAILED
+                        run.completed_at = datetime.now(timezone.utc)
+                        await self.db.commit()
+                        return
 
         # 所有步骤执行完毕
         run.status = WorkflowRunStatus.COMPLETED

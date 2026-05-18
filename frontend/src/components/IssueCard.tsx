@@ -31,6 +31,7 @@ const TYPE_COLORS: Record<string, string> = {
   task: "blue",
   improvement: "purple",
   documentation: "default",
+  idea: "gold",
 };
 
 export default function IssueCard({ issue, priorityColors, isDragOverlay }: IssueCardProps) {

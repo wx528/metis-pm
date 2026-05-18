@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.8.0] - 2026-05-18
+
+### Phase 8：内网部署就绪
+
+#### CORS 动态配置
+
+| 文件 | 变更 |
+|------|------|
+| `docker-compose.yml` | CORS_ORIGINS 改为从 .env 读取：`${CORS_ORIGINS:-http://localhost:8080}` |
+
+#### SQLite 备份脚本
+
+| 文件 | 变更 |
+|------|------|
+| `backend/backup.sh` | 新增备份脚本：一致性备份 → gzip 压缩 → 自动清理旧备份 |
+
+#### Issue 类型扩展
+
+| 文件 | 变更 |
+|------|------|
+| `backend/src/models/issue.py` | IssueType 新增 `IDEA = "idea"` |
+| `frontend/src/pages/Issues.tsx` | 类型列增加颜色渲染，新增 idea 选项 |
+| `frontend/src/components/IssueCard.tsx` | 新增 idea 类型颜色（gold） |
+
+#### 版本号
+
+| 文件 | 变更 |
+|------|------|
+| `VERSION` | 0.7.0 → 0.8.0 |
+| `backend/main.py` | 版本号同步 |
+| `docker-compose.yml` | APP_VERSION 同步 |
+
+#### Ideas 目录整理
+
+| 变更 | 说明 |
+|------|------|
+| `docs/ideas/inbox/` | 新增未分类目录 |
+| 文件重命名 | 02-07.md → 描述性命名（kanban-dashboard.md 等） |
+| 归类 | doing/ + backlog/ + done/ + notconsider/ |
+
+---
+
 ## [0.7.0] - 2026-05-18
 
 ### Phase 7：安全治理（P0 修复）

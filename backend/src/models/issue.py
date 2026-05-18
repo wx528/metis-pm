@@ -12,6 +12,7 @@ class IssueType(str, enum.Enum):
     TASK = "task"
     IMPROVEMENT = "improvement"
     DOCUMENTATION = "documentation"
+    IDEA = "idea"
 
 
 class IssueStatus(str, enum.Enum):

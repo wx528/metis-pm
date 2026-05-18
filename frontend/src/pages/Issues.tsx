@@ -25,6 +25,15 @@ const statusColors: Record<string, string> = {
   cancelled: "default",
 };
 
+const typeColors: Record<string, string> = {
+  bug: "red",
+  feature: "green",
+  task: "blue",
+  improvement: "purple",
+  documentation: "default",
+  idea: "gold",
+};
+
 export default function Issues() {
   const navigate = useNavigate();
   const { currentProject } = useProject();
@@ -106,6 +115,7 @@ export default function Issues() {
       title: "类型",
       dataIndex: "issue_type",
       width: 100,
+      render: (t: string) => <Tag color={typeColors[t]}>{t}</Tag>,
     },
     {
       title: "状态",
@@ -257,6 +267,7 @@ export default function Issues() {
               <Option value="task">task</Option>
               <Option value="improvement">improvement</Option>
               <Option value="documentation">documentation</Option>
+              <Option value="idea">idea</Option>
             </Select>
           </Form.Item>
           <Form.Item name="milestone_id" label="Milestone">

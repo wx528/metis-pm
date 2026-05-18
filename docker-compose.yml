@@ -10,7 +10,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////data/project_manager.db
-      - CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
       - DEBUG=false
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -29,7 +29,7 @@ services:
     build:
       context: ./frontend
       args:
-        APP_VERSION: "0.7.0"
+        APP_VERSION: "0.8.0"
     container_name: pm-frontend
     ports:
       - "8080:80"

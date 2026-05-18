@@ -12,19 +12,36 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:////data/project_manager.db
       - CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
       - DEBUG=false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
       context: ./frontend
       args:
-        APP_VERSION: "0.6.0"
+        APP_VERSION: "0.7.0"
     container_name: pm-frontend
     ports:
       - "8080:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
 
 volumes:
   sqlite_data:

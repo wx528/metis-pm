@@ -2,27 +2,24 @@
 
 Project Manager System 的 MCP Server 让 AI Coding Agent（如 CodeBuddy、Cline）可以直接与项目管理系统交互。
 
-## 快速开始
+> 适用版本: v0.7.0+
+> 最后更新: 2026-05-18
 
-### 1. 启动后端
+---
 
-```bash
-cd backend
-pip install -r requirements.txt
-python main.py
-# API 运行在 http://localhost:8000
-```
+## 一、快速开始
 
-### 2. 获取 Token
+### 1. 确保后端已运行
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"password":"admin"}'
-# 返回: {"access_token": "eyJ...", "token_type": "bearer"}
+# 本地开发
+cd backend && python main.py
+
+# 或 Docker 部署
+docker compose up -d
 ```
 
-### 3. 配置 MCP
+### 2. 配置 MCP
 
 在 CodeBuddy / Cline 的 MCP 配置文件中添加：
 
@@ -31,45 +28,133 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   "mcpServers": {
     "project-manager": {
       "command": "python",
-      "args": ["D:/AI-learning/tce_tiku/project_mananger_system/backend/mcp_server.py"],
+      "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
       "env": {
         "PM_API_URL": "http://localhost:8000/api/v1",
-        "PM_TOKEN": "your-jwt-token-here"
+        "PM_AGENT_PASSWORD": "your-agent-password"
       }
     }
   }
 }
 ```
 
-> **注意**：将路径和 Token 替换为实际值。
+**配置项说明**：
 
-### 4. 验证连接
-
-配置完成后，AI Agent 可调用 `check_connection` 工具确认连通性。
-
----
-
-## 可用工具一览
-
-| 工具 | 功能 | 说明 |
+| 参数 | 必填 | 说明 |
 |------|------|------|
-| `check_connection` | 连接测试 | 验证 MCP 是否正常连接后端 |
-| `create_issue` | 创建 Issue | 自动标记 `source=ai_agent` |
-| `list_issues` | 查询 Issues | 支持 status/priority/source 筛选 |
-| `update_issue_status` | 更新状态 | open/in_progress/review/deferred/closed/cancelled |
-| `update_issue_priority` | 更新优先级 | P0/P1/P2/P3 |
-| `defer_issue` | 暂缓 Issue | 推迟到指定 milestone |
-| `add_issue_comment` | 添加评论 | 为 issue 添加 AI 评论 |
-| `propose_plan` | 提议计划 | 创建 pending_approval 计划 |
-| `list_plans` | 查询计划 | 可按状态筛选 |
-| `update_plan_progress` | 更新计划进度 | 创建/更新 PlanItem |
-| `list_milestones` | 查询阶段 | 列出所有 milestones |
-| `list_servers` | 查询服务器 | 列出所有服务器 |
-| `get_server_credentials` | 获取凭据 | 获取服务器用户名/密码 |
+| `PM_API_URL` | ✅ | 后端 API 地址，本地为 `http://localhost:8000/api/v1`，内网为 `http://192.168.1.100:8000/api/v1` |
+| `PM_AGENT_PASSWORD` | ✅ | Agent 密码，对应 `.env` 中 `AGENT_PASSWORDS` 的某一项 |
+
+> ⚠️ 旧版 `PM_TOKEN` 已废弃。MCP Server 启动时会用 `PM_AGENT_PASSWORD` 自动登录获取 JWT Token，无需手动获取。
+
+### 3. 验证连接
+
+在 AI Agent 对话中请求：
+
+```
+请用 check_connection 工具测试连接
+```
+
+预期返回：
+
+```
+Connected OK. Identity: buddy (role=agent)
+```
 
 ---
 
-## 典型场景
+## 二、内网部署配置
+
+当后端部署到内网服务器时，修改 `PM_API_URL` 为服务器内网 IP：
+
+```json
+{
+  "mcpServers": {
+    "project-manager": {
+      "command": "python",
+      "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
+      "env": {
+        "PM_API_URL": "http://192.168.1.100:8000/api/v1",
+        "PM_AGENT_PASSWORD": "CHANGE-ME"
+      }
+    }
+  }
+}
+```
+
+> 详见 [内网部署指南](deploy-guide.md)
+
+---
+
+## 三、可用工具一览（22 个）
+
+### 通用
+
+| 工具 | 功能 |
+|------|------|
+| `check_connection` | 测试 MCP 与后端 API 连接 |
+
+### 项目
+
+| 工具 | 功能 |
+|------|------|
+| `list_projects` | 列出所有项目（含统计） |
+| `create_project` | 创建新项目（slug 只允许小写字母/数字/连字符） |
+
+### Issue
+
+| 工具 | 功能 |
+|------|------|
+| `create_issue` | 创建 Issue，source 自动标记为 ai_agent |
+| `list_issues` | 查询 Issues，支持 status/priority/source/milestone 筛选 |
+| `update_issue_status` | 更新状态: open/in_progress/review/deferred/closed/cancelled |
+| `update_issue_priority` | 更新优先级: P0/P1/P2/P3 |
+| `defer_issue` | 暂缓 Issue 到指定 milestone |
+| `add_issue_comment` | 为 Issue 添加评论 |
+
+### 计划
+
+| 工具 | 功能 |
+|------|------|
+| `propose_plan` | 提议计划（status=pending_approval，等待人类审批） |
+| `list_plans` | 查询计划列表 |
+| `update_plan_progress` | 更新计划项进度（不存在则自动创建） |
+
+### 里程碑
+
+| 工具 | 功能 |
+|------|------|
+| `list_milestones` | 查询里程碑列表（含 Issue 统计） |
+| `create_milestone` | 创建里程碑（支持 phase/due_date） |
+
+### 服务器
+
+| 工具 | 功能 |
+|------|------|
+| `list_servers` | 查询服务器列表 |
+| `get_server_credentials` | 查询凭据元数据（**仅返回是否已设置，不含明文密码**） |
+
+> 🔒 出于安全考虑，`get_server_credentials` 仅返回"密码: 已设置/未设置"等元信息。如需查看完整凭据，请通过 Web UI 以 admin 身份访问。
+
+### 通知
+
+| 工具 | 功能 |
+|------|------|
+| `check_notifications` | 检查当前 Agent 的通知 |
+| `mark_notification_read` | 标记通知已读 |
+
+### 工作流
+
+| 工具 | 功能 |
+|------|------|
+| `list_workflows` | 列出工作流 |
+| `create_workflow` | 创建工作流（trigger: on_issue_created/on_plan_approved/manual） |
+| `trigger_workflow` | 手动触发工作流 |
+| `list_workflow_runs` | 查看工作流执行记录 |
+
+---
+
+## 四、典型场景
 
 ### Agent 发现问题，创建 Issue
 
@@ -100,27 +185,19 @@ Agent 调用 defer_issue(issue_id=7, milestone_id=2, reason="Phase 2 再处理")
 → Issue #7 标记为 deferred
 ```
 
----
+### Agent 触发自动化工作流
 
-## Docker 环境配置
-
-如果使用 Docker 部署，MCP 配置中的 API 地址需指向宿主机：
-
-```json
-{
-  "env": {
-    "PM_API_URL": "http://host.docker.internal:8000/api/v1",
-    "PM_TOKEN": "your-jwt-token"
-  }
-}
+```
+Agent 调用 trigger_workflow(workflow_id=5)
+→ WorkflowRun 创建，步骤自动执行
 ```
 
-Windows 上使用 `host.docker.internal`，Linux 上使用 `localhost` 或宿主机 IP。
-
 ---
 
-## 安全注意事项
+## 五、安全注意事项
 
-- Token 有过期时间（JWT 24h），过期后需重新获取
-- 服务器凭据（密码）为明文存储，仅用于本地单人环境
-- 生产环境建议升级为 AES 加密存储
+- **凭据已加密**：服务器密码和 SSH Key 使用 Fernet 对称加密存储，密钥从 `ENCRYPTION_KEY` 环境变量读取
+- **凭据 API 限 admin**：`GET /servers/{id}/credentials` 仅 admin 角色可访问，且有审计日志
+- **MCP 不泄露明文**：`get_server_credentials` 工具仅返回元数据，密码/密钥不会进入 AI 上下文
+- **JWT 24h 过期**：Token 签发后 24 小时过期，MCP Server 遇 401 自动重新登录
+- **CORS 已收紧**：仅允许配置的前端地址访问 API

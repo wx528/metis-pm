@@ -2,6 +2,18 @@
 
 ## [0.8.0] - 2026-05-18
 
+### Docs：分析报告与 Idea Inbox
+
+| 文件 | 说明 |
+|------|------|
+| `docs/analyze-reports/20260518/01-project-analysis.md` | 项目现状分析报告：核心优势、短板与方向 |
+| `docs/analyze-reports/20260518/02-competitor-survey.md` | 同类开源项目调研：20+ 竞品对比 |
+| `docs/analyze-reports/20260518/03-actionable-insights.md` | 可执行借鉴方案：9 个方向，按优先级排序 |
+| `docs/ideas/inbox/_index.md` | Idea Inbox 索引：按优先级整理，含状态跟踪 |
+| `docs/ideas/inbox/git-webhook-integration.md` | Idea：Git Webhook 自动关联（高优先级） |
+| `docs/ideas/inbox/mcp-ecosystem-strategy.md` | Idea：强化 MCP 生态位战略（长期） |
+| `docs/ideas/inbox/prompt-to-structure.md` | Idea：Prompt-to-Structure 自然语言创建项目（中优先级） |
+
 ### Phase 8：内网部署就绪
 
 #### CORS 动态配置

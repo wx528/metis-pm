@@ -7,8 +7,9 @@
 | 文件 | 变更 |
 |------|------|
 | `.env` | 新增 `BACKEND_PORT`/`FRONTEND_PORT` 环境变量，可自定义对外端口 |
-| `docker-compose.yml` | 端口映射改为读取 `${BACKEND_PORT:-8000}`/`${FRONTEND_PORT:-8080}`；`restart: unless-stopped` → `restart: "no"` |
+| `docker-compose.yml` | 端口映射改为读取环境变量；CORS 默认值增加 `${HOST_IP}` 支持内网 IP 访问；`restart` 改为 `on-failure`（异常退出自动恢复，不自动随开机启动） |
 | `docker-compose.dev.yml` | 端口映射同上改为读取环境变量 |
+| `.env.example` | 同步新增 `BACKEND_PORT`/`FRONTEND_PORT`/`HOST_IP`/`CORS_ORIGINS` 说明 |
 | `Makefile` | 新增开发快捷命令：`make dev`/`rebuild`/`logs`/`stop`/`clean` 等 |
 
 ### Docs：分析报告与 Idea Inbox

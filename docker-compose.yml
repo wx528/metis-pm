@@ -10,7 +10,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////data/project_manager.db
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-8080},http://127.0.0.1:${FRONTEND_PORT:-8080}}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-8080},http://127.0.0.1:${FRONTEND_PORT:-8080},http://${HOST_IP:-localhost}:${FRONTEND_PORT:-8080}}
       - DEBUG=false
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -18,7 +18,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    restart: "no"
+    restart: on-failure
     logging:
       driver: json-file
       options:
@@ -36,7 +36,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    restart: "no"
+    restart: on-failure
     logging:
       driver: json-file
       options:

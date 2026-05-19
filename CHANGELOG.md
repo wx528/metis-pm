@@ -1,6 +1,15 @@
 # Changelog
 
-## [0.8.0] - 2026-05-18
+## [0.8.0] - 2026-05-19
+
+### DevOps：端口可配 + Makefile + restart 策略
+
+| 文件 | 变更 |
+|------|------|
+| `.env` | 新增 `BACKEND_PORT`/`FRONTEND_PORT` 环境变量，可自定义对外端口 |
+| `docker-compose.yml` | 端口映射改为读取 `${BACKEND_PORT:-8000}`/`${FRONTEND_PORT:-8080}`；`restart: unless-stopped` → `restart: "no"` |
+| `docker-compose.dev.yml` | 端口映射同上改为读取环境变量 |
+| `Makefile` | 新增开发快捷命令：`make dev`/`rebuild`/`logs`/`stop`/`clean` 等 |
 
 ### Docs：分析报告与 Idea Inbox
 

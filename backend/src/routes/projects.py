@@ -11,7 +11,7 @@ from src.models.plan import Plan
 from src.models.milestone import Milestone
 from src.models.server import Server
 from src.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectReadWithStats
-from src.routes.auth import get_current_user
+from src.routes.auth import get_current_user, require_role
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -92,7 +92,7 @@ async def list_projects(
 
 
 @router.post("", response_model=ProjectRead, status_code=201)
-async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     # 检查 slug 唯一
     existing = await db.execute(select(Project).where(Project.slug == data.slug))
     if existing.scalar_one_or_none():
@@ -134,7 +134,7 @@ async def get_project(slug: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{slug}", response_model=ProjectRead)
-async def update_project(slug: str, data: ProjectUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def update_project(slug: str, data: ProjectUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     project = await _get_project_by_slug(db, slug)
 
     update_data = data.model_dump(exclude_unset=True)
@@ -152,7 +152,7 @@ async def update_project(slug: str, data: ProjectUpdate, db: AsyncSession = Depe
 
 
 @router.delete("/{slug}", status_code=204)
-async def delete_project(slug: str, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def delete_project(slug: str, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin"))):
     project = await _get_project_by_slug(db, slug)
 
     # 检查关联数据，有数据时拒绝删除

@@ -15,7 +15,7 @@ from src.schemas.plan import (
     PlanCreate, PlanUpdate, PlanRead, PlanReadWithItems, PlanReadWithStats,
     PlanItemCreate, PlanItemUpdate, PlanItemRead,
 )
-from src.routes.auth import get_current_user
+from src.routes.auth import get_current_user, require_role
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -67,7 +67,7 @@ async def list_plans(
 
 
 @router.post("", response_model=PlanRead, status_code=201)
-async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     plan = Plan(**data.model_dump())
     db.add(plan)
     await db.commit()
@@ -122,7 +122,7 @@ async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{plan_id}", response_model=PlanRead)
-async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -168,7 +168,7 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
 
 
 @router.delete("/{plan_id}", status_code=204)
-async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin"))):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -189,7 +189,7 @@ async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: di
 # ── Approval ───────────────────────────────────────
 
 @router.post("/{plan_id}/approve", response_model=PlanRead)
-async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "mate"))):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -241,7 +241,7 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
 
 
 @router.post("/{plan_id}/reject", response_model=PlanRead)
-async def reject_plan(plan_id: int, reason: Optional[str] = Body(None, embed=True), db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def reject_plan(plan_id: int, reason: Optional[str] = Body(None, embed=True), db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "mate"))):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -292,7 +292,7 @@ async def list_plan_items(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{plan_id}/items", response_model=PlanItemRead, status_code=201)
-async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     plan_result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = plan_result.scalar_one_or_none()
     if not plan:
@@ -316,7 +316,7 @@ async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession 
 
 @router.put("/{plan_id}/items/{item_id}", response_model=PlanItemRead)
 async def update_plan_item(
-    plan_id: int, item_id: int, data: PlanItemUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)
+    plan_id: int, item_id: int, data: PlanItemUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))
 ):
     result = await db.execute(
         select(PlanItem).where(PlanItem.id == item_id, PlanItem.plan_id == plan_id)
@@ -352,7 +352,7 @@ async def update_plan_item(
 
 
 @router.delete("/{plan_id}/items/{item_id}", status_code=204)
-async def delete_plan_item(plan_id: int, item_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def delete_plan_item(plan_id: int, item_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin"))):
     result = await db.execute(
         select(PlanItem).where(PlanItem.id == item_id, PlanItem.plan_id == plan_id)
     )

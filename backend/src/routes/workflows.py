@@ -13,7 +13,7 @@ from src.schemas.workflow import (
     WorkflowStepCreate, WorkflowStepRead,
     WorkflowRunRead, WorkflowRunReadWithDetails,
 )
-from src.routes.auth import get_current_user
+from src.routes.auth import get_current_user, require_role
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -40,7 +40,7 @@ async def list_workflows(
 async def create_workflow(
     data: WorkflowCreate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "agent")),
 ):
     """创建工作流（含步骤）"""
     workflow = Workflow(
@@ -151,7 +151,7 @@ async def update_workflow(
     workflow_id: int,
     data: WorkflowUpdate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "agent")),
 ):
     """更新工作流"""
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
@@ -178,7 +178,7 @@ async def update_workflow(
 async def delete_workflow(
     workflow_id: int,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin")),
 ):
     """删除工作流"""
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
@@ -204,7 +204,7 @@ async def add_workflow_step(
     workflow_id: int,
     data: WorkflowStepCreate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "agent")),
 ):
     """添加工作流步骤"""
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
@@ -231,6 +231,7 @@ async def delete_workflow_step(
     workflow_id: int,
     step_id: int,
     db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_role("admin")),
 ):
     """删除工作流步骤"""
     result = await db.execute(
@@ -251,7 +252,7 @@ async def delete_workflow_step(
 async def trigger_workflow(
     workflow_id: int,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "agent")),
 ):
     """手动触发工作流"""
     from src.core.workflow_engine import WorkflowEngine
@@ -274,7 +275,7 @@ async def resume_workflow_run(
     run_id: int,
     approved: bool = True,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "mate")),
 ):
     """恢复暂停的工作流执行（审批通过/拒绝）"""
     from src.core.workflow_engine import WorkflowEngine

@@ -2,9 +2,10 @@
 
 ## [0.15.0] - 2026-05-25
 
-### 大副 (First Mate) MCP Server — 多 Agent 架构
+### 大副 (First Mate) MCP Server — 多 Agent 架构 + RBAC 权限隔离
 
 引入"大副"角色，作为管理型 Agent 负责审批、分配、监督，与工人 Agent 使用独立端口和工具集。
+同时实现后端 RBAC 权限隔离，从 API 层面硬性限制不同角色的操作范围。
 
 #### 架构变更
 
@@ -14,7 +15,28 @@
 | `mcp_server_mate.py` | 大副 MCP Server，端口 9001，管理类工具集 |
 | `mcp_server.py` | 重构使用 mcp_common，端口 9000 不变 |
 | Docker Compose | 新增 `mcp-mate` 容器 |
-| `.env` | 新增 `first-mate:CHANGE-ME` 密码和 `MCP_MATE_PORT` |
+| `.env` | 新增 `first-mate:CHANGE-ME:mate` 密码和 `MCP_MATE_PORT` |
+
+#### RBAC 权限隔离（硬隔离）
+
+密码配置格式升级：`name:password:role`，第三段为角色（默认 `agent`）。
+
+| 操作 | admin | agent (工人) | mate (大副) |
+|------|-------|-------------|-------------|
+| 创建 Issue/Plan/项目/里程碑 | ✅ | ✅ | ❌ |
+| 审批/拒绝 Plan | ✅ | ❌ | ✅ |
+| 更新 Plan 进度 | ✅ | ✅ | ❌ |
+| 工作流写操作 | ✅ | ✅ | ❌ |
+| 工作流审批恢复 | ✅ | ❌ | ✅ |
+| Agent 记忆 | ✅ | ✅ | ❌ |
+| 删除操作 | ✅ | ❌ | ❌ |
+| 读取（列表/详情） | ✅ | ✅ | ✅ |
+| 更新 Issue（状态/优先级/assignee） | ✅ | ✅ | ✅ |
+
+关键实现：
+- `settings.py`：`AGENT_PASSWORDS` 支持 `name:password:role` 格式，`resolve_identity` 返回真实角色
+- `auth.py`：新增 `require_role(*allowed_roles)` 依赖注入工厂
+- 各路由：写操作添加 `require_role` 校验，读取操作保持 `get_current_user`
 
 #### 大副工具集
 

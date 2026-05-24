@@ -59,6 +59,16 @@ async def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+def require_role(*allowed_roles: str):
+    """角色权限校验工厂：仅允许指定角色访问"""
+    def _checker(user: dict = Depends(get_current_user)) -> dict:
+        if user.get("role") not in allowed_roles:
+            roles_str = "/".join(allowed_roles)
+            raise HTTPException(status_code=403, detail=f"{roles_str} role required, got '{user.get('role', 'unknown')}'")
+        return user
+    return _checker
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(data: LoginRequest):
     identity = settings.resolve_identity(data.password)

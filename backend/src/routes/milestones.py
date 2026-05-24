@@ -8,7 +8,7 @@ from src.core.activity import log_activity
 from src.models.milestone import Milestone
 from src.models.issue import Issue, IssueStatus
 from src.schemas.milestone import MilestoneCreate, MilestoneUpdate, MilestoneRead, MilestoneReadWithStats
-from src.routes.auth import get_current_user
+from src.routes.auth import get_current_user, require_role
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -70,7 +70,7 @@ async def list_milestones(
 
 
 @router.post("", response_model=MilestoneRead, status_code=201)
-async def create_milestone(data: MilestoneCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def create_milestone(data: MilestoneCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     """创建里程碑"""
     milestone = Milestone(**data.model_dump())
     db.add(milestone)
@@ -130,7 +130,7 @@ async def get_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{milestone_id}", response_model=MilestoneRead)
-async def update_milestone(milestone_id: int, data: MilestoneUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def update_milestone(milestone_id: int, data: MilestoneUpdate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     """更新里程碑"""
     result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
     milestone = result.scalar_one_or_none()
@@ -154,7 +154,7 @@ async def update_milestone(milestone_id: int, data: MilestoneUpdate, db: AsyncSe
 
 
 @router.delete("/{milestone_id}", status_code=204)
-async def delete_milestone(milestone_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def delete_milestone(milestone_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin"))):
     """删除里程碑"""
     result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
     milestone = result.scalar_one_or_none()

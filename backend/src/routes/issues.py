@@ -12,7 +12,7 @@ from src.models.notification import NotificationType
 from src.models.comment import Comment
 from src.schemas.issue import IssueCreate, IssueUpdate, IssueRead, IssueReadWithComments, IssueListResponse
 from src.schemas.comment import CommentCreate, CommentRead
-from src.routes.auth import get_current_user
+from src.routes.auth import get_current_user, require_role
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -78,7 +78,7 @@ async def list_issues(
 
 
 @router.post("", response_model=IssueRead, status_code=201)
-async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
     issue = Issue(**data.model_dump())
     db.add(issue)
     await db.commit()
@@ -198,7 +198,7 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
 
 
 @router.delete("/{issue_id}", status_code=204)
-async def delete_issue(issue_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def delete_issue(issue_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin"))):
     result = await db.execute(select(Issue).where(Issue.id == issue_id))
     issue = result.scalar_one_or_none()
     if not issue:

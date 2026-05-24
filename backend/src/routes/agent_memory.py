@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 
 from src.core.dependencies import get_db
 from src.models.agent_memory import AgentMemory
-from src.routes.auth import get_current_user
+from src.routes.auth import get_current_user, require_role
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter(dependencies=[Depends(require_role("admin", "agent"))])
 
 
 class AgentMemoryCreate(BaseModel):

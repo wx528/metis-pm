@@ -132,6 +132,25 @@ async def _run_migrations(conn):
         except Exception as e:
             logger.warning(f"Failed to encrypt existing credentials: {e}")
 
+    # Phase 7: proposed_by_name / created_by 字段
+    result = await conn.execute(text("PRAGMA table_info(plans)"))
+    plans_cols = {row[1] for row in result.fetchall()}
+    if "proposed_by_name" not in plans_cols:
+        try:
+            await conn.execute(text("ALTER TABLE plans ADD COLUMN proposed_by_name VARCHAR(100)"))
+            logger.info("Added proposed_by_name column to plans")
+        except Exception as e:
+            logger.warning(f"Failed to add proposed_by_name to plans: {e}")
+
+    result = await conn.execute(text("PRAGMA table_info(issues)"))
+    issues_cols = {row[1] for row in result.fetchall()}
+    if "created_by" not in issues_cols:
+        try:
+            await conn.execute(text("ALTER TABLE issues ADD COLUMN created_by VARCHAR(100)"))
+            logger.info("Added created_by column to issues")
+        except Exception as e:
+            logger.warning(f"Failed to add created_by to issues: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

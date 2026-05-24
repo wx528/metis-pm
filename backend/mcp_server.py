@@ -203,7 +203,7 @@ async def get_context(project_id: Optional[int] = None) -> str:
         lines.append("=== 待审批计划 ===")
         for p in pending_plans:
             desc_preview = f" — {p['description'][:80]}..." if p.get("description") and len(p["description"]) > 80 else (f" — {p['description']}" if p.get("description") else "")
-            lines.append(f"  Plan #{p['id']}: {p['title']}{desc_preview} (by {p.get('proposed_by','?')})")
+            lines.append(f"  Plan #{p['id']}: {p['title']}{desc_preview} (by {p.get('proposed_by_name') or p.get('proposed_by','?')})")
 
     # 4. 最近活动
     recent = dash.get("recent_activities", [])
@@ -293,12 +293,14 @@ async def create_issue(
     labels: str = "",
 ) -> str:
     """创建 issue，source 自动标记为 ai_agent"""
+    agent_name = await _current_sub()
     payload = {
         "title": title,
         "description": description,
         "priority": priority,
         "issue_type": issue_type,
         "source": "ai_agent",
+        "created_by": agent_name,
         "milestone_id": milestone_id,
         "labels": labels,
     }
@@ -361,7 +363,8 @@ async def list_issues(
             if item.get("deferred_reason"):
                 deferred_info += f" ({item['deferred_reason']})"
         time_info = f"\n    创建: {item.get('created_at','?')} | 更新: {item.get('updated_at','?')}"
-        lines.append(f"  #{item['id']} [{item['priority']}] {item['title']} ({item['status']}, source={item['source']}, type={item.get('issue_type','?')}){desc_preview}{assignee_info}{deferred_info}{time_info}")
+        by_info = f", by {item['created_by']}" if item.get('created_by') else ""
+        lines.append(f"  #{item['id']} [{item['priority']}] {item['title']} ({item['status']}, source={item['source']}{by_info}, type={item.get('issue_type','?')}){desc_preview}{assignee_info}{deferred_info}{time_info}")
     return "\n".join(lines)
 
 
@@ -439,10 +442,12 @@ async def list_comments(issue_id: int) -> str:
 @mcp.tool()
 async def propose_plan(title: str, description: str = "", project_id: Optional[int] = None) -> str:
     """提议一个新计划（状态为 pending_approval，等待用户审批）"""
+    agent_name = await _current_sub()
     payload = {
         "title": title,
         "description": description,
         "proposed_by": "ai_agent",
+        "proposed_by_name": agent_name,
         "status": "pending_approval",
     }
     if project_id:
@@ -485,7 +490,7 @@ async def list_plans(status: Optional[str] = None, project_id: Optional[int] = N
         reject = ""
         if item.get("reject_reason"):
             reject = f"\n    拒绝原因: {item['reject_reason']}"
-        lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (proposed_by={item['proposed_by']}){desc_preview}{progress}{approval}{reject}")
+        lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (by {item.get('proposed_by_name') or item['proposed_by']}){desc_preview}{progress}{approval}{reject}")
     return "\n".join(lines)
 
 

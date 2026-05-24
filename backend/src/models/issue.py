@@ -48,6 +48,7 @@ class Issue(Base):
     status = Column(EnumColumn(IssueStatus), default=IssueStatus.OPEN, nullable=False)
     priority = Column(EnumColumn(IssuePriority), default=IssuePriority.P2, nullable=False)
     source = Column(EnumColumn(IssueSource), default=IssueSource.USER, nullable=False)
+    created_by = Column(String(100), nullable=True)
     assignee = Column(String(100), nullable=True)
     labels = Column(String(500), nullable=True)  # 逗号分隔的标签
     milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True)

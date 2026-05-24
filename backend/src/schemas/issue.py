@@ -13,6 +13,7 @@ class IssueCreate(BaseModel):
     status: IssueStatus = IssueStatus.OPEN
     priority: IssuePriority = IssuePriority.P2
     source: IssueSource = IssueSource.USER
+    created_by: Optional[str] = None
     assignee: Optional[str] = None
     labels: Optional[str] = None
     milestone_id: Optional[int] = None
@@ -44,6 +45,7 @@ class IssueRead(BaseModel):
     status: str
     priority: str
     source: str
+    created_by: Optional[str] = None
     assignee: Optional[str] = None
     labels: Optional[str] = None
     milestone_id: Optional[int] = None

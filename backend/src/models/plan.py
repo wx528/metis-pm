@@ -29,6 +29,7 @@ class Plan(Base):
     description = Column(Text, nullable=True)
     status = Column(EnumColumn(PlanStatus), default=PlanStatus.DRAFT)
     proposed_by = Column(EnumColumn(PlanSource), default=PlanSource.USER)
+    proposed_by_name = Column(String(100), nullable=True)
     approved_by = Column(String(20), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     reject_reason = Column(Text, nullable=True)

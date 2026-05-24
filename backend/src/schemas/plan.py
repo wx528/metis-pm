@@ -44,6 +44,7 @@ class PlanCreate(BaseModel):
     description: Optional[str] = None
     status: PlanStatus = PlanStatus.DRAFT
     proposed_by: PlanSource = PlanSource.USER
+    proposed_by_name: Optional[str] = None
     current_milestone_id: Optional[int] = None
 
 
@@ -61,6 +62,7 @@ class PlanRead(BaseModel):
     description: Optional[str] = None
     status: PlanStatus
     proposed_by: PlanSource
+    proposed_by_name: Optional[str] = None
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     reject_reason: Optional[str] = None

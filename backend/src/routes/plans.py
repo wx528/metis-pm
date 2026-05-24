@@ -53,6 +53,7 @@ async def list_plans(
             description=p.description,
             status=p.status,
             proposed_by=p.proposed_by,
+            proposed_by_name=p.proposed_by_name,
             approved_by=p.approved_by,
             approved_at=p.approved_at,
             reject_reason=p.reject_reason,
@@ -180,9 +181,10 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
     )
 
     # 通知 plan 提议者审批通过
-    if plan.proposed_by and plan.proposed_by != "user":
+    recipient = plan.proposed_by_name or plan.proposed_by
+    if recipient and recipient != "user":
         await create_notification(
-            db, recipient=plan.proposed_by,
+            db, recipient=recipient,
             type=NotificationType.INFO,
             title=f"Plan #{plan.id} 已审批通过",
             body=plan.title,
@@ -230,9 +232,10 @@ async def reject_plan(plan_id: int, reason: Optional[str] = Body(None, embed=Tru
     )
 
     # 通知 plan 提议者被拒绝
-    if plan.proposed_by and plan.proposed_by != "user":
+    recipient = plan.proposed_by_name or plan.proposed_by
+    if recipient and recipient != "user":
         await create_notification(
-            db, recipient=plan.proposed_by,
+            db, recipient=recipient,
             type=NotificationType.INFO,
             title=f"Plan #{plan.id} 被拒绝",
             body=f"{plan.title} - 原因: {reason or '无'}",

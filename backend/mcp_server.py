@@ -127,9 +127,11 @@ class PasswordMiddleware:
         await self.app(scope, receive, send)
 
 
-def _current_sub() -> str:
+async def _current_sub() -> str:
     password = _get_password()
     key = _cache_key(password)
+    if not _token_cache.get(key, {}).get("sub"):
+        await _ensure_token()
     return _token_cache.get(key, {}).get("sub", "ai_agent")
 
 
@@ -157,7 +159,7 @@ async def check_connection() -> str:
 async def get_context(project_id: Optional[int] = None) -> str:
     """【首选入口】获取全局态势感知：一次调用返回项目概览、紧急告警、待审批计划、最近活动、我的状态。建议每次会话开始时首先调用此工具，替代多次 list 调用。"""
     lines = []
-    agent_name = _current_sub()
+    agent_name = await _current_sub()
 
     # 1. Dashboard 概览
     params = {}
@@ -222,7 +224,7 @@ async def get_context(project_id: Optional[int] = None) -> str:
     # 6. 我的状态
     lines.append("")
     lines.append(f"=== 我的状态 ({agent_name}) ===")
-    my_issues_resp = await _api_request("GET", f"{API_BASE}/issues", params={"source": agent_name, "status": "open", "limit": 5})
+    my_issues_resp = await _api_request("GET", f"{API_BASE}/issues", params={"source": "ai_agent", "status": "open", "limit": 5})
     if my_issues_resp.status_code < 400:
         my_data = my_issues_resp.json()
         my_open = my_data.get("total", 0)
@@ -290,14 +292,13 @@ async def create_issue(
     milestone_id: Optional[int] = None,
     labels: str = "",
 ) -> str:
-    """创建 issue，source 自动标记为当前 agent 身份"""
-    agent_name = _current_sub()
+    """创建 issue，source 自动标记为 ai_agent"""
     payload = {
         "title": title,
         "description": description,
         "priority": priority,
         "issue_type": issue_type,
-        "source": agent_name,
+        "source": "ai_agent",
         "milestone_id": milestone_id,
         "labels": labels,
     }
@@ -410,7 +411,7 @@ async def undefer_issue(issue_id: int) -> str:
 @mcp.tool()
 async def add_issue_comment(issue_id: int, content: str) -> str:
     """为 issue 添加评论"""
-    agent_name = _current_sub()
+    agent_name = await _current_sub()
     resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json={"content": content, "author": agent_name})
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
@@ -438,11 +439,10 @@ async def list_comments(issue_id: int) -> str:
 @mcp.tool()
 async def propose_plan(title: str, description: str = "", project_id: Optional[int] = None) -> str:
     """提议一个新计划（状态为 pending_approval，等待用户审批）"""
-    agent_name = _current_sub()
     payload = {
         "title": title,
         "description": description,
-        "proposed_by": agent_name,
+        "proposed_by": "ai_agent",
         "status": "pending_approval",
     }
     if project_id:
@@ -492,7 +492,7 @@ async def list_plans(status: Optional[str] = None, project_id: Optional[int] = N
 @mcp.tool()
 async def update_plan_progress(plan_id: int, item_title: str, status: str = "done") -> str:
     """更新计划项进度。如果 plan_item 不存在则自动创建。仅 approved(active) 状态的 Plan 才能更新进度。"""
-    agent_name = _current_sub()
+    agent_name = await _current_sub()
 
     # 检查 Plan 状态
     plan_resp = await _api_request("GET", f"{API_BASE}/plans/{plan_id}")

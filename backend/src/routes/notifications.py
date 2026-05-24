@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, or_
 
 from src.core.dependencies import get_db
 from src.models.notification import Notification, NotificationType
@@ -16,6 +16,12 @@ from src.routes.auth import get_current_user
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
+def _recipient_filter(user: dict):
+    if user.get("role") == "agent":
+        return or_(Notification.recipient == user["sub"], Notification.recipient == "ai_agent")
+    return Notification.recipient == user["sub"]
+
+
 @router.get("", response_model=NotificationListResponse)
 async def list_notifications(
     skip: int = Query(0, ge=0),
@@ -26,8 +32,7 @@ async def list_notifications(
     user: dict = Depends(get_current_user),
 ):
     """通知列表（当前用户的通知）"""
-    recipient = user["sub"]
-    query = select(Notification).where(Notification.recipient == recipient)
+    query = select(Notification).where(_recipient_filter(user))
     if unread_only:
         query = query.where(Notification.read == False)
     if project_id is not None:
@@ -46,10 +51,9 @@ async def list_notifications(
 @router.get("/unread-count", response_model=UnreadCountResponse)
 async def unread_count(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     """未读通知数"""
-    recipient = user["sub"]
     result = await db.execute(
         select(func.count(Notification.id)).where(
-            Notification.recipient == recipient,
+            _recipient_filter(user),
             Notification.read == False,
         )
     )
@@ -63,7 +67,7 @@ async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db), us
     notification = result.scalar_one_or_none()
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
-    if notification.recipient != user["sub"]:
+    if notification.recipient != user["sub"] and notification.recipient != "ai_agent":
         raise HTTPException(status_code=403, detail="Not your notification")
     notification.read = True
     await db.commit()
@@ -74,11 +78,10 @@ async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db), us
 @router.put("/read-all", status_code=204)
 async def mark_all_read(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     """全部标记已读"""
-    recipient = user["sub"]
     from sqlalchemy import update
     await db.execute(
         update(Notification)
-        .where(Notification.recipient == recipient, Notification.read == False)
+        .where(_recipient_filter(user), Notification.read == False)
         .values(read=True)
     )
     await db.commit()
@@ -94,6 +97,8 @@ async def notification_stream(
     recipient = user["sub"]
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     register_sse_connection(recipient, queue)
+    if user.get("role") == "agent" and recipient != "ai_agent":
+        register_sse_connection("ai_agent", queue)
 
     async def event_generator():
         try:
@@ -110,6 +115,8 @@ async def notification_stream(
             pass
         finally:
             unregister_sse_connection(recipient, queue)
+            if user.get("role") == "agent" and recipient != "ai_agent":
+                unregister_sse_connection("ai_agent", queue)
 
     return StreamingResponse(
         event_generator(),

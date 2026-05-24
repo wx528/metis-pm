@@ -221,6 +221,41 @@ async def get_context(project_id: Optional[int] = None) -> str:
         for i in recent_issues[:5]:
             lines.append(f"  Issue #{i['id']} [{i['priority']}] {i['title']} ({i['status']}, source={i['source']})")
 
+    # 5.5 活跃 Agent & 无负责人 P0
+    try:
+        activity_resp = await _api_request("GET", f"{API_BASE}/activity-logs", params={"limit": 50})
+        if activity_resp.status_code < 400:
+            activities = activity_resp.json()
+            from datetime import datetime as dt, timezone
+            one_hour_ago = dt.now(timezone.utc).timestamp() - 3600
+            active_agents = set()
+            for a in activities:
+                created = a.get("created_at", "")
+                if created:
+                    try:
+                        ts = dt.fromisoformat(created).timestamp()
+                        if ts >= one_hour_ago:
+                            active_agents.add(a.get("actor", "?"))
+                    except (ValueError, TypeError):
+                        pass
+            if active_agents:
+                lines.append("")
+                lines.append(f"=== 活跃 Agent (1h) ===")
+                for ag in sorted(active_agents):
+                    lines.append(f"  {ag}")
+    except Exception:
+        pass
+
+    p0_resp = await _api_request("GET", f"{API_BASE}/issues", params={"priority": "P0", "status": "open", "limit": 10})
+    if p0_resp.status_code < 400:
+        p0_data = p0_resp.json()
+        unassigned = [i for i in p0_data.get("items", p0_data if isinstance(p0_data, list) else []) if not i.get("assignee")]
+        if unassigned:
+            lines.append("")
+            lines.append("=== 无负责人 P0 Issue ===")
+            for i in unassigned[:5]:
+                lines.append(f"  Issue #{i['id']} {i['title']}")
+
     # 6. 我的状态
     lines.append("")
     lines.append(f"=== 我的状态 ({agent_name}) ===")
@@ -266,7 +301,9 @@ async def list_projects() -> str:
     for item in items:
         status = item.get("status", "?")
         stats = f" ({item.get('issue_count',0)} issues, {item.get('plan_count',0)} plans, {item.get('milestone_count',0)} milestones, {item.get('server_count',0)} servers)"
-        lines.append(f"  #{item['id']} [{status}] {item['name']} (slug={item['slug']}){stats}")
+        owner = f" owner={item['owner']}" if item.get('owner') else ""
+        desc = f"\n    描述: {item['description'][:80]}{'...' if len(item.get('description','')) > 80 else ''}" if item.get('description') else ""
+        lines.append(f"  #{item['id']} [{status}] {item['name']} (slug={item['slug']}){stats}{owner}{desc}")
     return "\n".join(lines)
 
 
@@ -396,6 +433,17 @@ async def update_issue_status(issue_id: int, status: str) -> str:
 
 
 @mcp.tool()
+async def claim_issue(issue_id: int) -> str:
+    """认领 Issue：将 Issue 分配给自己并设为 in_progress。避免多 Agent 重复处理。"""
+    agent_name = await _current_sub()
+    resp = await _api_request("PUT", f"{API_BASE}/issues/{issue_id}", json={"assignee": agent_name, "status": "in_progress"})
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    data = resp.json()
+    return f"Issue #{data['id']} claimed by {agent_name}\n  标题: {data['title']} | 状态: {data['status']} | 负责人: {data.get('assignee', '?')} | updated_at={data.get('updated_at', '?')}"
+
+
+@mcp.tool()
 async def update_issue_priority(issue_id: int, priority: str) -> str:
     """更新 issue 优先级: P0/P1/P2/P3"""
     resp = await _api_request("PUT", f"{API_BASE}/issues/{issue_id}", json={"priority": priority})
@@ -455,6 +503,36 @@ async def list_comments(issue_id: int, limit: int = 50) -> str:
     return "\n".join(lines)
 
 
+@mcp.tool()
+async def get_issue_detail(issue_id: int) -> str:
+    """查看 Issue 完整详情（含评论列表、关联里程碑、推迟信息）"""
+    resp = await _api_request("GET", f"{API_BASE}/issues/{issue_id}")
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    d = resp.json()
+    lines = [
+        f"Issue #{d['id']} [{d['priority']}] {d['title']}",
+        f"  状态: {d['status']} | 类型: {d.get('issue_type', '?')} | 来源: {d.get('source', '?')}",
+        f"  创建者: {d.get('created_by', '?')} | 负责人: {d.get('assignee') or '未分配'}",
+        f"  项目: #{d.get('project_id', '?')} | 里程碑: #{d.get('milestone_id') or '无'}",
+    ]
+    if d.get('labels'):
+        lines.append(f"  标签: {d['labels']}")
+    if d.get('description'):
+        lines.append(f"  描述: {d['description']}")
+    if d.get('deferred_to_milestone_id'):
+        lines.append(f"  推迟到: milestone #{d['deferred_to_milestone_id']} (原因: {d.get('deferred_reason', '无')})")
+    lines.append(f"  创建: {d.get('created_at', '?')} | 更新: {d.get('updated_at', '?')}")
+    comments_resp = await _api_request("GET", f"{API_BASE}/issues/{issue_id}/comments", params={"limit": 10})
+    if comments_resp.status_code < 400:
+        comments = comments_resp.json()
+        if comments:
+            lines.append(f"  评论 ({len(comments)}):")
+            for c in comments[:5]:
+                lines.append(f"    #{c['id']} [{c.get('author', '?')}] {c['content'][:100]}{'...' if len(c.get('content', '')) > 100 else ''}")
+    return "\n".join(lines)
+
+
 # ── Plans ──────────────────────────────────────────
 
 @mcp.tool()
@@ -509,6 +587,35 @@ async def list_plans(status: Optional[str] = None, project_id: Optional[int] = N
         if item.get("reject_reason"):
             reject = f"\n    拒绝原因: {item['reject_reason']}"
         lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (by {item.get('proposed_by_name') or item['proposed_by']}){desc_preview}{progress}{approval}{reject}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_plan_detail(plan_id: int) -> str:
+    """查看 Plan 完整详情（含审批信息、拒绝原因、进度项列表）"""
+    resp = await _api_request("GET", f"{API_BASE}/plans/{plan_id}")
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    d = resp.json()
+    lines = [
+        f"Plan #{d['id']} [{d['status']}] {d['title']}",
+        f"  提议者: {d.get('proposed_by_name') or d.get('proposed_by', '?')} | 项目: #{d.get('project_id', '?')}",
+    ]
+    if d.get('description'):
+        lines.append(f"  描述: {d['description']}")
+    if d.get('approved_by'):
+        lines.append(f"  审批: by {d['approved_by']} at {d.get('approved_at', '?')}")
+    if d.get('reject_reason'):
+        lines.append(f"  拒绝原因: {d['reject_reason']}")
+    lines.append(f"  创建: {d.get('created_at', '?')} | 更新: {d.get('updated_at', '?')}")
+    items_resp = await _api_request("GET", f"{API_BASE}/plans/{plan_id}/items")
+    if items_resp.status_code < 400:
+        items = items_resp.json()
+        if items:
+            lines.append(f"  进度项 ({len(items)}):")
+            for item in items[:10]:
+                status_icon = "✅" if item.get("status") == "done" else "⬜"
+                lines.append(f"    {status_icon} #{item['id']} {item.get('content', '?')} ({item.get('status', '?')})")
     return "\n".join(lines)
 
 

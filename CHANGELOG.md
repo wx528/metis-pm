@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.13.0] - 2026-05-25
+
+### MCP Agent 体验优化 v4（基于 03.openclaw.2026-05-25_0507.md 测试报告）
+
+基于 OpenClaw (Emily) MCP 体验测试报告的问题修复和新功能，重点解决 Agent 详情查看、任务认领、多 Agent 协调等痛点。
+
+#### 新增工具
+
+| 工具 | 说明 |
+|------|------|
+| `get_issue_detail(issue_id)` | 查看 Issue 完整详情（含评论列表、关联里程碑、推迟信息） |
+| `get_plan_detail(plan_id)` | 查看 Plan 完整详情（含审批信息、拒绝原因、进度项列表） |
+| `claim_issue(issue_id)` | 认领 Issue：将 Issue 分配给自己并设为 in_progress，避免多 Agent 重复处理 |
+
+#### `get_context` 增强
+
+| 新增内容 | 说明 |
+|----------|------|
+| 活跃 Agent 列表 | 最近 1 小时有过操作的 Agent，帮助了解谁在干活 |
+| 无负责人 P0 Issue | 列出未分配的 P0 紧急 Issue，Agent 可以主动认领 |
+
+#### `list_projects` 增强
+
+| 新增内容 | 说明 |
+|----------|------|
+| owner | 项目负责人 |
+| 描述预览 | 项目描述（80 字符截断） |
+
+#### 已修复（v0.10~0.12 已解决，OpenClaw 测试时可能使用旧版）
+
+| 报告问题 | 实际状态 |
+|----------|---------|
+| `create_issue` 返回太精简 | ✅ v0.10 已增强，返回描述/标签/负责人/里程碑/创建时间 |
+| `list_plans` 不返回 `reject_reason` | ✅ v0.10 已添加 |
+| `list_plans` 缺少审批元信息 | ✅ v0.10 已添加 `approved_by`/`approved_at` |
+| Plan reject 后无法修改 | ✅ v0.12 新增 `revise_plan` 工具 |
+| 不知道系统全局状态 | ✅ v0.10 新增 `get_context` |
+| `check_notifications` 无 `since` | ✅ v0.12 已添加 |
+| Agent 记忆机制 | ✅ v0.12 新增 `set/get_agent_memory` |
+| `created_by` 筛选 | ✅ v0.12 已添加 |
+
+### 版本号
+
+| 文件 | 变更 |
+|------|------|
+| `VERSION` | 0.12.0 → 0.13.0 |
+
+---
+
 ## [0.12.0] - 2026-05-25
 
 ### MCP Agent 体验优化 v3（基于 03.kimi.20260525_0444.md 测试报告）

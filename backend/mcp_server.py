@@ -405,10 +405,11 @@ async def list_issues(
     milestone_id: Optional[int] = None,
     deferred_only: bool = False,
     limit: int = 20,
+    offset: int = 0,
     sort_by: str = "created_at_desc",
 ) -> str:
-    """查询 issues 列表（含描述、时间、负责人、里程碑等完整信息）。sort_by 可选: created_at_desc/created_at_asc/updated_at_desc/updated_at_asc/priority_asc/priority_desc。created_by 按创建者筛选（如 hermes-agent）"""
-    params = {"limit": limit, "sort_by": sort_by}
+    """查询 issues 列表（含描述、时间、负责人、里程碑等完整信息）。sort_by 可选: created_at_desc/created_at_asc/updated_at_desc/updated_at_asc/priority_asc/priority_desc。created_by 按创建者筛选（如 hermes-agent）。offset 分页偏移量，默认 0。"""
+    params = {"limit": limit, "skip": offset, "sort_by": sort_by}
     if project_id:
         params["project_id"] = project_id
     if status:
@@ -481,6 +482,40 @@ async def update_issue_priority(issue_id: int, priority: str) -> str:
 
 
 @mcp.tool()
+async def update_issue(
+    issue_id: int,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    assignee: Optional[str] = None,
+    labels: Optional[str] = None,
+    milestone_id: Optional[int] = None,
+    issue_type: Optional[str] = None,
+) -> str:
+    """更新 Issue 的标题、描述、负责人、标签、里程碑、类型等字段。只传需要修改的字段，未传的字段保持不变。"""
+    payload = {}
+    if title is not None:
+        payload["title"] = title
+    if description is not None:
+        payload["description"] = description
+    if assignee is not None:
+        payload["assignee"] = assignee
+    if labels is not None:
+        payload["labels"] = labels
+    if milestone_id is not None:
+        payload["milestone_id"] = milestone_id
+    if issue_type is not None:
+        payload["issue_type"] = issue_type
+    if not payload:
+        return "Error: 至少提供一个要修改的字段"
+    resp = await _api_request("PUT", f"{API_BASE}/issues/{issue_id}", json=payload)
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    d = resp.json()
+    changes = ", ".join(f"{k}={v}" for k, v in payload.items())
+    return f"Issue #{d['id']} updated ({changes})\n  标题: {d['title']} | 状态: {d['status']} | 优先级: {d['priority']} | 负责人: {d.get('assignee') or '未分配'} | updated_at={d.get('updated_at','?')}"
+
+
+@mcp.tool()
 async def defer_issue(issue_id: int, milestone_id: int, reason: str = "") -> str:
     """将 issue 暂缓到指定 milestone"""
     params = {"deferred_to_milestone_id": milestone_id}
@@ -504,20 +539,24 @@ async def undefer_issue(issue_id: int) -> str:
 
 
 @mcp.tool()
-async def add_issue_comment(issue_id: int, content: str) -> str:
-    """为 issue 添加评论"""
+async def add_issue_comment(issue_id: int, content: str, parent_comment_id: Optional[int] = None) -> str:
+    """为 issue 添加评论。parent_comment_id 可选，用于回复特定评论（线程式回复）。"""
     agent_name = await _current_sub()
-    resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json={"content": content, "author": agent_name})
+    payload = {"content": content, "author": agent_name}
+    if parent_comment_id is not None:
+        payload["parent_id"] = parent_comment_id
+    resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json=payload)
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     data = resp.json()
-    return f"Comment #{data['id']} added to Issue #{issue_id} by {data.get('author', '?')} at {data.get('created_at', '?')}"
+    reply_info = f" (reply to #{parent_comment_id})" if parent_comment_id else ""
+    return f"Comment #{data['id']} added to Issue #{issue_id} by {data.get('author', '?')}{reply_info} at {data.get('created_at', '?')}"
 
 
 @mcp.tool()
-async def list_comments(issue_id: int, limit: int = 50) -> str:
-    """获取 Issue 的评论列表"""
-    params = {"limit": limit}
+async def list_comments(issue_id: int, limit: int = 50, offset: int = 0) -> str:
+    """获取 Issue 的评论列表。offset 分页偏移量，默认 0。"""
+    params = {"limit": limit, "offset": offset}
     resp = await _api_request("GET", f"{API_BASE}/issues/{issue_id}/comments", params=params)
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
@@ -526,7 +565,8 @@ async def list_comments(issue_id: int, limit: int = 50) -> str:
         return f"No comments on Issue #{issue_id}."
     lines = [f"Total: {len(items)} comments on Issue #{issue_id}"]
     for c in items:
-        lines.append(f"  #{c['id']} [{c.get('author', '?')}] {c['content'][:200]}{'...' if len(c.get('content', '')) > 200 else ''} ({c.get('created_at', '?')})")
+        reply = f" ↩#{c['parent_id']}" if c.get("parent_id") else ""
+        lines.append(f"  #{c['id']} [{c.get('author', '?')}]{reply} {c['content'][:200]}{'...' if len(c.get('content', '')) > 200 else ''} ({c.get('created_at', '?')})")
     return "\n".join(lines)
 
 

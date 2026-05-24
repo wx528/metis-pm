@@ -281,10 +281,10 @@ async def undefer_issue(
 
 
 @router.get("/{issue_id}/comments", response_model=List[CommentRead])
-async def list_comments(issue_id: int, limit: int = Query(50, ge=1, le=200), db: AsyncSession = Depends(get_db)):
+async def list_comments(issue_id: int, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: AsyncSession = Depends(get_db)):
     """获取 Issue 的评论列表"""
     result = await db.execute(
-        select(Comment).where(Comment.issue_id == issue_id).order_by(asc(Comment.created_at)).limit(limit)
+        select(Comment).where(Comment.issue_id == issue_id).order_by(asc(Comment.created_at)).offset(offset).limit(limit)
     )
     return result.scalars().all()
 

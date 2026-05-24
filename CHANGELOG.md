@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.14.0] - 2026-05-25
+
+### MCP Agent 体验优化 v5（基于 03.kimi.2026-05-25_0505.md 测试报告）
+
+基于 Kimi (hermes-agent) MCP 体验测试报告的问题修复，与 OpenClaw 同期测试，补充了 Kimi 独有的痛点。
+
+#### 新增工具
+
+| 工具 | 说明 |
+|------|------|
+| `update_issue(issue_id, title?, description?, assignee?, labels?, milestone_id?, issue_type?)` | 通用 Issue 更新工具，只传需要修改的字段 |
+| `get_my_recent_actions(limit)` | 查看当前 Agent 的最近操作历史（v0.13.1 已添加） |
+
+#### 分页增强
+
+| 工具 | 变更 |
+|------|------|
+| `list_issues` | 新增 `offset` 参数，支持翻页 |
+| `list_comments` | 新增 `offset` 参数，后端 API 同步支持 |
+
+#### 评论线程回复
+
+| 变更 | 说明 |
+|------|------|
+| `add_issue_comment` | 新增 `parent_comment_id` 参数，支持回复特定评论 |
+| `list_comments` | 显示 `↩#N` 回复标记 |
+| 数据库迁移 | `comments` 表新增 `parent_id` 列 |
+
+#### 已修复（v0.10~0.13 已解决，Kimi 测试时可能使用旧版）
+
+| 报告问题 | 实际状态 |
+|----------|---------|
+| `list_plans` 不返回 `reject_reason` | ✅ v0.10 已添加 |
+| `create_issue` 返回不完整 | ✅ v0.10 已增强 |
+| 没有 `get_issue` 单条查询 | ✅ v0.13 新增 `get_issue_detail` |
+| Plan reject 后无法修改 | ✅ v0.12 新增 `revise_plan` |
+| 不知道系统全局状态 | ✅ v0.10 新增 `get_context` |
+| `propose_plan` 没有 `project_id` | ✅ v0.13 已添加 |
+| 任务认领机制 | ✅ v0.13 新增 `claim_issue` |
+| Agent 活动查看 | ✅ v0.13.1 新增 `get_my_recent_actions` |
+| `list_plans` 不返回 plan items 详情 | ✅ v0.13 新增 `get_plan_detail` |
+
+### 版本号
+
+| 文件 | 变更 |
+|------|------|
+| `VERSION` | 0.13.1 → 0.14.0 |
+
+---
+
 ## [0.13.0] - 2026-05-25
 
 ### MCP Agent 体验优化 v4（基于 03.openclaw.2026-05-25_0507.md 测试报告）

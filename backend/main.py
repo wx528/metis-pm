@@ -171,6 +171,15 @@ async def _run_migrations(conn):
         await conn.execute(text("CREATE INDEX ix_agent_memories_agent_id ON agent_memories(agent_id)"))
         logger.info("Created agent_memories table")
 
+    result = await conn.execute(text("PRAGMA table_info(comments)"))
+    comments_cols = {row[1] for row in result.fetchall()}
+    if "parent_id" not in comments_cols:
+        try:
+            await conn.execute(text("ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id)"))
+            logger.info("Added parent_id column to comments")
+        except Exception as e:
+            logger.warning(f"Failed to add parent_id to comments: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

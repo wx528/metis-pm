@@ -13,6 +13,7 @@
 | `get_issue_detail(issue_id)` | 查看 Issue 完整详情（含评论列表、关联里程碑、推迟信息） |
 | `get_plan_detail(plan_id)` | 查看 Plan 完整详情（含审批信息、拒绝原因、进度项列表） |
 | `claim_issue(issue_id)` | 认领 Issue：将 Issue 分配给自己并设为 in_progress，避免多 Agent 重复处理 |
+| `get_my_recent_actions(limit)` | 查看当前 Agent 的最近操作历史，帮助回忆"我之前干了什么" |
 
 #### `get_context` 增强
 

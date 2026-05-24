@@ -286,6 +286,33 @@ async def get_context(project_id: Optional[int] = None) -> str:
     return "\n".join(lines)
 
 
+# ── Agent Actions ──────────────────────────────────
+
+@mcp.tool()
+async def get_my_recent_actions(limit: int = 20) -> str:
+    """查看当前 Agent 的最近操作历史。帮助回忆"我之前干了什么"，避免重复操作。"""
+    agent_name = await _current_sub()
+    resp = await _api_request("GET", f"{API_BASE}/activity-logs", params={"actor": agent_name, "limit": limit})
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    items = resp.json()
+    if not items:
+        return f"No recent actions found for {agent_name}."
+    lines = [f"Recent actions by {agent_name} ({len(items)}):"]
+    for a in items:
+        ts = a.get("created_at", "?")
+        if ts and len(ts) > 19:
+            ts = ts[:19]
+        detail = ""
+        if a.get("new_value"):
+            nv = str(a["new_value"])
+            if len(nv) > 60:
+                nv = nv[:60] + "..."
+            detail = f" → {nv}"
+        lines.append(f"  [{ts}] {a['entity_type']}#{a['entity_id']} {a['action']}{detail}")
+    return "\n".join(lines)
+
+
 # ── Projects ────────────────────────────────────────
 
 @mcp.tool()

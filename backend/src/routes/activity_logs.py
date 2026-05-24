@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -14,17 +14,21 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 @router.get("", response_model=List[ActivityLogRead])
 async def list_activity_logs(
     db: AsyncSession = Depends(get_db),
-    entity_type: str = Query(..., description="issue | plan | plan_item | server | milestone"),
-    entity_id: int = Query(...),
+    entity_type: Optional[str] = Query(None, description="issue | plan | plan_item | server | milestone"),
+    entity_id: Optional[int] = Query(None),
+    actor: Optional[str] = Query(None, description="按操作者筛选"),
     limit: int = Query(50, ge=1, le=200),
 ):
-    """查询指定实体的活动日志"""
-    result = await db.execute(
-        select(ActivityLog)
-        .where(ActivityLog.entity_type == entity_type, ActivityLog.entity_id == entity_id)
-        .order_by(desc(ActivityLog.created_at))
-        .limit(limit)
-    )
+    """查询活动日志（支持按实体或操作者筛选）"""
+    query = select(ActivityLog).order_by(desc(ActivityLog.created_at))
+    if entity_type and entity_id:
+        query = query.where(ActivityLog.entity_type == entity_type, ActivityLog.entity_id == entity_id)
+    elif entity_type:
+        query = query.where(ActivityLog.entity_type == entity_type)
+    if actor:
+        query = query.where(ActivityLog.actor == actor)
+    query = query.limit(limit)
+    result = await db.execute(query)
     return result.scalars().all()
 
 

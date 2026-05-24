@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.9.0] - 2026-05-23
+
+### MCP Server 多身份认证 + Streamable HTTP 传输
+
+之前 MCP Server 只支持 stdio 模式，所有客户端共用一个身份。现在支持 Streamable HTTP 远程传输，每个 Agent 通过 `X-PM-Password` 请求头使用独立身份连接。
+
+| 变更 | 说明 |
+|------|------|
+| Streamable HTTP 传输 | MCP Server 新增 `streamable-http` 模式，单端点 `/mcp`，无需本地脚本路径 |
+| SSE 传输 | 同时支持 `sse` 模式，端点 `/sse` |
+| PasswordMiddleware | ASGI 中间件提取 `X-PM-Password` 请求头，注入 ContextVar |
+| ContextVar 会话隔离 | `_request_password` 按请求存储密码，不同客户端互不干扰 |
+| 按密码缓存 Token | `_token_cache` 改为 `dict[str, dict]`，每个密码独立缓存 JWT |
+| Docker MCP 服务 | `docker-compose.yml` 新增 `mcp` 服务，暴露 9000 端口 |
+| `.env` 配置 | 新增 `MCP_TRANSPORT`、`MCP_PORT`、`MCP_HOST`、`AGENT_PASSWORDS` |
+
+#### 连接配置示例
+
+**Streamable HTTP（Hermes 等远程 Agent）：**
+```json
+{
+  "mcpServers": {
+    "project-manager": {
+      "url": "http://localhost:9000/mcp",
+      "headers": {
+        "X-PM-Password": "CHANGE-ME"
+      }
+    }
+  }
+}
+```
+
+**stdio（Cline/CodeBuddy 等本地 Agent）：**
+```json
+{
+  "mcpServers": {
+    "project-manager": {
+      "command": "python",
+      "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
+      "env": {
+        "PM_API_URL": "http://localhost:8000/api/v1",
+        "PM_AGENT_PASSWORD": "CHANGE-ME"
+      }
+    }
+  }
+}
+```
+
+### Bug 修复
+
+| 问题 | 修复 |
+|------|------|
+| SQLAlchemy 枚举 LookupError | 创建 `EnumColumn` 辅助函数，`values_callable=lambda x: [e.value for e in x]`，统一存储枚举值而非枚举名 |
+| SQLite `_credentials_encrypted` 列缺失 | 将 `ALTER TABLE ADD COLUMN` 移到 `ENCRYPTION_KEY` 条件外，确保列始终存在 |
+| MCP 406 Not Acceptable | 客户端请求需添加 `Accept: application/json, text/event-stream` 头 |
+| MCP 身份固定 | 所有客户端共用一个 token 缓存 → 改为按密码缓存，支持多身份 |
+| FastMCP 无 `app` 属性 | 通过 `mcp.streamable_http_app()` / `mcp.sse_app()` 获取 Starlette 应用 |
+| MCP 初始化握手 | 按协议流程：`initialize` → `initialized` 通知 → 调用工具 |
+
+### Agent 测试提示词
+
+| 文件 | 说明 |
+|------|------|
+| `docs/agent-test/prompt/mcp-exploratory-test.md` | Hermes-agent 探索性测试提示词，含 MCP 连接确认步骤 |
+
+### Delegate Agent 设计文档
+
+| 文件 | 说明 |
+|------|------|
+| `docs/plan/all-agent/delegate-agent-design.md` | Agent 扮演人类角色处理 P1 及以下任务的方案设计：角色体系、权限矩阵、.env 配置、决策规则、实施路线 |
+
+### 版本号
+
+| 文件 | 变更 |
+|------|------|
+| `VERSION` | 0.8.0 → 0.9.0 |
+
+---
+
 ## [0.8.0] - 2026-05-19
 
 ### DevOps：端口可配 + Makefile + restart 策略

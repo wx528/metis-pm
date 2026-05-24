@@ -1,7 +1,14 @@
+import enum
+from sqlalchemy import Enum as SaEnum
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
 from src.settings import settings
+
+
+def EnumColumn(enum_class, **kwargs):
+    return SaEnum(enum_class, values_callable=lambda x: [e.value for e in x], **kwargs)
+
 
 engine = create_async_engine(
     settings.DATABASE_URL,

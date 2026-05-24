@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Date, ForeignKey
 from sqlalchemy.orm import relationship
 
-from src.core.database import Base
+from src.core.database import Base, EnumColumn
 
 
 class MilestoneStatus(str, enum.Enum):
@@ -19,7 +19,7 @@ class Milestone(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     phase = Column(String(50), nullable=True)
-    status = Column(Enum(MilestoneStatus), default=MilestoneStatus.OPEN)
+    status = Column(EnumColumn(MilestoneStatus), default=MilestoneStatus.OPEN)
     due_date = Column(Date, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

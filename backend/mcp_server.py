@@ -2,23 +2,37 @@
 Project Manager MCP Server
 AI Coding Agent 通过 MCP 协议与本系统交互的工具入口
 
-配置方式（CodeBuddy/Cline MCP 配置）：
+=== stdio 模式配置（CodeBuddy/Cline） ===
 {
   "mcpServers": {
     "project-manager": {
       "command": "python",
       "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
       "env": {
-        "PM_API_URL": "http://localhost:8000/api/v1",
+        "PM_API_URL": "http://localhost:8098/api/v1",
         "PM_AGENT_PASSWORD": "CHANGE-ME"
       }
     }
   }
 }
 
-PM_AGENT_PASSWORD: 在 .env 的 AGENT_PASSWORDS 中配置，格式为 "agent_name:password"
-例如 AGENT_PASSWORDS=cline:CHANGE-ME,buddy:buddy-2026
-MCP Server 启动时会自动用 agent 密码登录获取 token
+=== Streamable HTTP 模式配置（Hermes 等远程 Agent） ===
+{
+  "mcpServers": {
+    "project-manager": {
+      "url": "http://localhost:9000/mcp",
+      "headers": {
+        "X-PM-Password": "CHANGE-ME"
+      }
+    }
+  }
+}
+
+密码对应 .env 的 AGENT_PASSWORDS，格式 "agent_name:password"
+例如 AGENT_PASSWORDS=trae:CHANGE-ME,hermes-agent:CHANGE-ME
+
+HTTP 模式通过 X-PM-Password 请求头传递密码，每个客户端可以有独立身份。
+无密码头时使用启动时的 PM_AGENT_PASSWORD 作为默认身份。
 """
 import os
 import sys
@@ -28,47 +42,65 @@ sys.path.insert(0, os.path.dirname(__file__))
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional
+from contextvars import ContextVar
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
 API_BASE = os.environ.get("PM_API_URL", "http://localhost:8000/api/v1")
 AGENT_PASSWORD = os.environ.get("PM_AGENT_PASSWORD", "")
-_token_cache: dict = {}
+
+_request_password: ContextVar[str] = ContextVar("_request_password", default="")
+
+
+def _get_password() -> str:
+    return _request_password.get() or AGENT_PASSWORD
+
+
+_token_cache: dict[str, dict] = {}
+
+
+def _cache_key(password: str) -> str:
+    return password
 
 
 async def _ensure_token() -> str:
-    global _token_cache
-    if _token_cache.get("token"):
-        return _token_cache["token"]
-    return await _login()
+    password = _get_password()
+    key = _cache_key(password)
+    if _token_cache.get(key, {}).get("token"):
+        return _token_cache[key]["token"]
+    return await _login(password)
 
 
-async def _login() -> str:
-    global _token_cache
-    if not AGENT_PASSWORD:
-        raise RuntimeError("PM_AGENT_PASSWORD not set. Configure it in MCP settings.")
+async def _login(password: str = "") -> str:
+    password = password or _get_password()
+    if not password:
+        raise RuntimeError("No agent password. Set PM_AGENT_PASSWORD env (stdio) or X-PM-Password header (HTTP).")
+    key = _cache_key(password)
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{API_BASE}/auth/login",
-            json={"password": AGENT_PASSWORD},
+            json={"password": password},
         )
         if resp.status_code != 200:
             raise RuntimeError(f"Login failed ({resp.status_code}): {resp.text}")
         data = resp.json()
-        _token_cache["token"] = data["token"]
-        _token_cache["sub"] = data.get("sub", "unknown")
-        _token_cache["role"] = data.get("role", "unknown")
-        return _token_cache["token"]
+        _token_cache[key] = {
+            "token": data["token"],
+            "sub": data.get("sub", "unknown"),
+            "role": data.get("role", "unknown"),
+        }
+        return _token_cache[key]["token"]
 
 
 async def _api_request(method: str, url: str, *, max_retries: int = 1, **kwargs) -> httpx.Response:
-    """统一 API 请求，自动处理 401 → 清缓存 → 重新登录 → 重试"""
+    password = _get_password()
     headers = kwargs.pop("headers", None) or await get_headers()
     async with httpx.AsyncClient() as client:
         resp = await client.request(method, url, headers=headers, **kwargs)
         if resp.status_code == 401 and max_retries > 0:
-            _token_cache.clear()
+            key = _cache_key(password)
+            _token_cache.pop(key, None)
             headers = await get_headers()
             resp = await client.request(method, url, headers=headers, **kwargs)
         return resp
@@ -80,6 +112,25 @@ async def get_headers() -> dict:
 
 
 mcp = FastMCP("project-manager")
+
+
+class PasswordMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = dict(scope.get("headers", []))
+            pw = headers.get(b"x-pm-password", b"").decode()
+            if pw:
+                _request_password.set(pw)
+        await self.app(scope, receive, send)
+
+
+def _current_sub() -> str:
+    password = _get_password()
+    key = _cache_key(password)
+    return _token_cache.get(key, {}).get("sub", "ai_agent")
 
 
 @mcp.tool()
@@ -95,7 +146,8 @@ async def check_connection() -> str:
             data = resp.json()
             return f"Connected OK. Identity: {data.get('sub', '?')} (role={data.get('role', '?')})"
         elif resp.status_code == 401:
-            _token_cache.clear()
+            key = _cache_key(_get_password())
+            _token_cache.pop(key, None)
             return "ERROR: Token invalid or expired (401). Will re-login on next call."
         else:
             return f"ERROR: API returned {resp.status_code}. Is the backend running?"
@@ -156,7 +208,7 @@ async def create_issue(
     labels: str = "",
 ) -> str:
     """创建 issue，source 自动标记为当前 agent 身份"""
-    agent_name = _token_cache.get("sub", "ai_agent")
+    agent_name = _current_sub()
     payload = {
         "title": title,
         "description": description,
@@ -250,7 +302,7 @@ async def defer_issue(issue_id: int, milestone_id: int, reason: str = "") -> str
 @mcp.tool()
 async def add_issue_comment(issue_id: int, content: str) -> str:
     """为 issue 添加评论"""
-    agent_name = _token_cache.get("sub", "ai_agent")
+    agent_name = _current_sub()
     resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json={"content": content, "author": agent_name})
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
@@ -300,7 +352,7 @@ async def list_plans(status: Optional[str] = None, project_id: Optional[int] = N
 @mcp.tool()
 async def update_plan_progress(plan_id: int, item_title: str, status: str = "done") -> str:
     """更新计划项进度。如果 plan_item 不存在则自动创建。"""
-    agent_name = _token_cache.get("sub", "ai_agent")
+    agent_name = _current_sub()
     resp = await _api_request("GET", f"{API_BASE}/plans/{plan_id}/items")
     if resp.status_code >= 400:
         return f"Error getting plan items: {resp.status_code}"
@@ -545,9 +597,26 @@ async def list_workflow_runs(workflow_id: Optional[int] = None, limit: int = 10)
     return "\n".join(lines)
 
 
+MCP_PORT = int(os.environ.get("MCP_PORT", "9000"))
+MCP_HOST = os.environ.get("MCP_HOST", "0.0.0.0")
+MCP_TRANSPORT = os.environ.get("MCP_TRANSPORT", "stdio")
+
+
 def main():
-    """Entry point for installed package."""
-    mcp.run(transport="stdio")
+    if MCP_TRANSPORT == "sse":
+        mcp.settings.host = MCP_HOST
+        mcp.settings.port = MCP_PORT
+        app = PasswordMiddleware(mcp.sse_app())
+        import uvicorn
+        uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
+    elif MCP_TRANSPORT == "streamable-http":
+        mcp.settings.host = MCP_HOST
+        mcp.settings.port = MCP_PORT
+        app = PasswordMiddleware(mcp.streamable_http_app())
+        import uvicorn
+        uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

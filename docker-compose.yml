@@ -25,6 +25,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  mcp:
+    build: ./backend
+    container_name: pm-mcp
+    ports:
+      - "${MCP_PORT:-9000}:9000"
+    env_file:
+      - .env
+    environment:
+      - PM_API_URL=http://backend:8000/api/v1
+      - MCP_TRANSPORT=streamable-http
+      - MCP_PORT=9000
+      - MCP_HOST=0.0.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: ["python", "mcp_server.py"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
   frontend:
     build:
       context: ./frontend

@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
-from src.core.database import Base
+from src.core.database import Base, EnumColumn
 
 
 class PlanStatus(str, enum.Enum):
@@ -27,8 +27,8 @@ class Plan(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(Enum(PlanStatus), default=PlanStatus.DRAFT)
-    proposed_by = Column(Enum(PlanSource), default=PlanSource.USER)
+    status = Column(EnumColumn(PlanStatus), default=PlanStatus.DRAFT)
+    proposed_by = Column(EnumColumn(PlanSource), default=PlanSource.USER)
     approved_by = Column(String(20), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     reject_reason = Column(Text, nullable=True)

@@ -90,17 +90,19 @@ async def _run_migrations(conn):
         except Exception as e:
             logger.warning(f"Failed to add updated_at to notifications: {e}")
 
-    # Phase 6.1: 加密已有明文凭据（password / ssh_key）
+    # Phase 6.1: 添加 _credentials_encrypted 列（必须存在，不依赖 ENCRYPTION_KEY）
+    result = await conn.execute(text("PRAGMA table_info(servers)"))
+    server_cols = {row[1] for row in result.fetchall()}
+    if "_credentials_encrypted" not in server_cols:
+        try:
+            await conn.execute(text("ALTER TABLE servers ADD COLUMN _credentials_encrypted INTEGER DEFAULT 0"))
+            logger.info("Added _credentials_encrypted column to servers")
+        except Exception as e:
+            logger.warning(f"Failed to add _credentials_encrypted to servers: {e}")
+
+    # Phase 6.2: 加密已有明文凭据（需要 ENCRYPTION_KEY）
     if settings.ENCRYPTION_KEY:
         try:
-            # 检查是否已经完成加密迁移（用 _credentials_encrypted 标记列判断）
-            result = await conn.execute(text("PRAGMA table_info(servers)"))
-            server_cols = {row[1] for row in result.fetchall()}
-            if "_credentials_encrypted" not in server_cols:
-                await conn.execute(text("ALTER TABLE servers ADD COLUMN _credentials_encrypted INTEGER DEFAULT 0"))
-                logger.info("Added _credentials_encrypted column to servers")
-
-            # 加密未标记的行
             result = await conn.execute(
                 text("SELECT id, password, ssh_key FROM servers WHERE _credentials_encrypted = 0")
             )

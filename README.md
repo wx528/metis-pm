@@ -61,12 +61,36 @@ docker compose up -d
 │  (你用的)    │                   │             │  project_manager.db
 └─────────────┘                   └──────┬──────┘
                                          │
-                                    MCP Server
-                                         │
-                                    ┌────┴────┐
-                                    │ AI Agent │
-                                    └─────────┘
+                                    MCP Server (Streamable HTTP / SSE / stdio)
+                                    ┌─────┴──────┐
+                                    │  多身份认证  │ ← X-PM-Password 请求头
+                                    └─────┬──────┘
+                                 ┌────────┼────────┐
+                                 │        │        │
+                            ┌────┴──┐ ┌──┴───┐ ┌──┴────┐
+                            │ Agent │ │Agent │ │ Agent │
+                            │  trae │ │hermes│ │ cline │
+                            └───────┘ └──────┘ └───────┘
 ```
+
+### MCP 传输模式
+
+| 模式 | 端点 | 适用场景 |
+|------|------|---------|
+| Streamable HTTP | `http://host:9000/mcp` | 远程 Agent（Hermes 等），无需本地脚本 |
+| SSE | `http://host:9000/sse` | 旧版客户端兼容 |
+| stdio | 本地进程 | 本地 Agent（Cline/CodeBuddy 等） |
+
+### 多身份认证
+
+每个 Agent 通过独立密码识别身份，ActivityLog 精确追踪谁做了什么：
+
+```env
+# .env
+AGENT_PASSWORDS=trae:CHANGE-ME,hermes-agent:CHANGE-ME,cline:CHANGE-ME
+```
+
+HTTP 模式通过 `X-PM-Password` 请求头传递密码，stdio 模式通过 `PM_AGENT_PASSWORD` 环境变量。
 
 ## 数据模型
 
@@ -209,7 +233,8 @@ GET    /api/v1/dashboard                 # 聚合统计数据
 | 凭据隔离 | 服务器密码/SSH Key 不在列表/详情接口返回，通过独立接口获取 |
 | CORS 限制 | 通过 `CORS_ORIGINS` 环境变量配置允许的来源 |
 | 密钥强制 | `SECRET_KEY` 和 `ADMIN_PASSWORD` 必须在 `.env` 中设置，无默认值 |
-| MCP Token | MCP Server 通过 `PM_TOKEN` 环境变量认证，启动时检查 |
+| MCP 多身份 | 每个 Agent 通过独立密码连接 MCP Server，HTTP 模式使用 `X-PM-Password` 请求头 |
+| MCP Token 缓存 | 按密码缓存 JWT，401 自动清缓存重登录 |
 | LIKE 转义 | 搜索接口转义 `%`、`_`、`\` 防止通配符注入 |
 
 ## 典型工作流

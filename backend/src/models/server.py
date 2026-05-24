@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
-from src.core.database import Base
+from src.core.database import Base, EnumColumn
 from src.core.crypto import encrypt_value, decrypt_value
 
 
@@ -41,9 +41,9 @@ class Server(Base):
     _password = Column("password", String(500), nullable=True)       # Fernet 加密存储
     _ssh_key = Column("ssh_key", Text, nullable=True)                # Fernet 加密存储
     _credentials_encrypted = Column("_credentials_encrypted", Integer, default=1)  # 标记凭据是否已加密
-    server_type = Column(Enum(ServerType), default=ServerType.OTHER)
-    status = Column(Enum(ServerStatus), default=ServerStatus.ACTIVE)
-    environment = Column(Enum(ServerEnvironment), default=ServerEnvironment.DEVELOPMENT)
+    server_type = Column(EnumColumn(ServerType), default=ServerType.OTHER)
+    status = Column(EnumColumn(ServerStatus), default=ServerStatus.ACTIVE)
+    environment = Column(EnumColumn(ServerEnvironment), default=ServerEnvironment.DEVELOPMENT)
     labels = Column(String(500), nullable=True)         # 逗号分隔
     last_checked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

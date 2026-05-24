@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
-from src.core.database import Base
+from src.core.database import Base, EnumColumn
 
 
 class PlanItemStatus(str, enum.Enum):
@@ -20,7 +20,7 @@ class PlanItem(Base):
     plan_id = Column(Integer, ForeignKey("plans.id"), nullable=False)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(Enum(PlanItemStatus), default=PlanItemStatus.PENDING)
+    status = Column(EnumColumn(PlanItemStatus), default=PlanItemStatus.PENDING)
     sort_order = Column(Integer, default=0)
     completed_by = Column(String(20), nullable=True)   # user | ai_agent | null
     completed_at = Column(DateTime, nullable=True)

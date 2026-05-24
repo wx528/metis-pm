@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 
-from src.core.database import Base
+from src.core.database import Base, EnumColumn
 
 
 class NotificationType(str, enum.Enum):
@@ -21,7 +21,7 @@ class Notification(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     recipient = Column(String(100), nullable=False, index=True)  # 目标身份，如 "admin"
-    type = Column(Enum(NotificationType), default=NotificationType.INFO, nullable=False)
+    type = Column(EnumColumn(NotificationType), default=NotificationType.INFO, nullable=False)
     title = Column(String(200), nullable=False)
     body = Column(Text, nullable=True)
     entity_type = Column(String(50), nullable=True)  # 关联实体类型: issue, plan, etc.

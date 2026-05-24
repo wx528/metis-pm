@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
-from src.core.database import Base
+from src.core.database import Base, EnumColumn
 
 
 class ProjectStatus(str, enum.Enum):
@@ -19,7 +19,7 @@ class Project(Base):
     slug = Column(String(100), unique=True, nullable=False, index=True)
     description = Column(Text, nullable=True)
     repo_url = Column(String(500), nullable=True)
-    status = Column(Enum(ProjectStatus), default=ProjectStatus.ACTIVE)
+    status = Column(EnumColumn(ProjectStatus), default=ProjectStatus.ACTIVE)
     owner = Column(String(100), nullable=True)
     default_milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

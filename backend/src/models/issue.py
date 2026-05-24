@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
-from src.core.database import Base
+from src.core.database import Base, EnumColumn
 
 
 class IssueType(str, enum.Enum):
@@ -44,10 +44,10 @@ class Issue(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    issue_type = Column(Enum(IssueType), default=IssueType.TASK, nullable=False)
-    status = Column(Enum(IssueStatus), default=IssueStatus.OPEN, nullable=False)
-    priority = Column(Enum(IssuePriority), default=IssuePriority.P2, nullable=False)
-    source = Column(Enum(IssueSource), default=IssueSource.USER, nullable=False)
+    issue_type = Column(EnumColumn(IssueType), default=IssueType.TASK, nullable=False)
+    status = Column(EnumColumn(IssueStatus), default=IssueStatus.OPEN, nullable=False)
+    priority = Column(EnumColumn(IssuePriority), default=IssuePriority.P2, nullable=False)
+    source = Column(EnumColumn(IssueSource), default=IssueSource.USER, nullable=False)
     assignee = Column(String(100), nullable=True)
     labels = Column(String(500), nullable=True)  # 逗号分隔的标签
     milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True)

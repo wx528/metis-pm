@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -8,6 +9,17 @@ from src.core.database import engine, Base
 from src.routes import api_router
 from src.settings import settings
 from src.core.crypto import encrypt_value
+
+
+def _get_version() -> str:
+    version_file = Path(__file__).resolve().parent.parent / "VERSION"
+    try:
+        return version_file.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return "0.0.0"
+
+
+APP_VERSION = _get_version()
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +143,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Project Manager",
-    version="0.10.0",
+    version=APP_VERSION,
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
@@ -149,4 +161,4 @@ app.include_router(api_router)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "app": "project_manager", "version": "0.10.0"}
+    return {"status": "ok", "app": "project_manager", "version": APP_VERSION}

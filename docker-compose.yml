@@ -52,7 +52,7 @@ services:
     build:
       context: ./frontend
       args:
-        APP_VERSION: "0.10.0"
+        APP_VERSION: "${APP_VERSION:-0.0.0}"
     container_name: pm-frontend
     ports:
       - "${FRONTEND_PORT:-8080}:80"

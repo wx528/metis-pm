@@ -48,6 +48,30 @@ services:
         max-size: "5m"
         max-file: "3"
 
+  mcp-mate:
+    build: ./backend
+    container_name: pm-mcp-mate
+    ports:
+      - "${MCP_MATE_PORT:-9001}:9001"
+    env_file:
+      - .env
+    environment:
+      - PM_API_URL=http://backend:8000/api/v1
+      - MCP_TRANSPORT=streamable-http
+      - MCP_PORT=9001
+      - MCP_HOST=0.0.0.0
+      - PM_AGENT_PASSWORD=${MATE_PASSWORD:-CHANGE-ME}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: ["python", "mcp_server_mate.py"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
   frontend:
     build:
       context: ./frontend

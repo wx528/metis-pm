@@ -1,20 +1,6 @@
 """
-Project Manager MCP Server
+Project Manager MCP Server - Worker (工人)
 AI Coding Agent 通过 MCP 协议与本系统交互的工具入口
-
-=== stdio 模式配置（CodeBuddy/Cline） ===
-{
-  "mcpServers": {
-    "project-manager": {
-      "command": "python",
-      "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
-      "env": {
-        "PM_API_URL": "http://localhost:8098/api/v1",
-        "PM_AGENT_PASSWORD": "CHANGE-ME"
-      }
-    }
-  }
-}
 
 === Streamable HTTP 模式配置（Hermes 等远程 Agent） ===
 {
@@ -42,97 +28,16 @@ sys.path.insert(0, os.path.dirname(__file__))
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional
-from contextvars import ContextVar
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-API_BASE = os.environ.get("PM_API_URL", "http://localhost:8000/api/v1")
-AGENT_PASSWORD = os.environ.get("PM_AGENT_PASSWORD", "")
-
-_request_password: ContextVar[str] = ContextVar("_request_password", default="")
-
-
-def _get_password() -> str:
-    return _request_password.get() or AGENT_PASSWORD
-
-
-_token_cache: dict[str, dict] = {}
-
-
-def _cache_key(password: str) -> str:
-    return password
-
-
-async def _ensure_token() -> str:
-    password = _get_password()
-    key = _cache_key(password)
-    if _token_cache.get(key, {}).get("token"):
-        return _token_cache[key]["token"]
-    return await _login(password)
-
-
-async def _login(password: str = "") -> str:
-    password = password or _get_password()
-    if not password:
-        raise RuntimeError("No agent password. Set PM_AGENT_PASSWORD env (stdio) or X-PM-Password header (HTTP).")
-    key = _cache_key(password)
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{API_BASE}/auth/login",
-            json={"password": password},
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"Login failed ({resp.status_code}): {resp.text}")
-        data = resp.json()
-        _token_cache[key] = {
-            "token": data["token"],
-            "sub": data.get("sub", "unknown"),
-            "role": data.get("role", "unknown"),
-        }
-        return _token_cache[key]["token"]
-
-
-async def _api_request(method: str, url: str, *, max_retries: int = 1, **kwargs) -> httpx.Response:
-    password = _get_password()
-    headers = kwargs.pop("headers", None) or await get_headers()
-    async with httpx.AsyncClient() as client:
-        resp = await client.request(method, url, headers=headers, **kwargs)
-        if resp.status_code == 401 and max_retries > 0:
-            key = _cache_key(password)
-            _token_cache.pop(key, None)
-            headers = await get_headers()
-            resp = await client.request(method, url, headers=headers, **kwargs)
-        return resp
-
-
-async def get_headers() -> dict:
-    token = await _ensure_token()
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
+from mcp_common import (
+    API_BASE, _api_request, _current_sub, get_headers,
+    PasswordMiddleware, AGENT_PASSWORD,
+)
 
 mcp = FastMCP("project-manager")
-
-
-class PasswordMiddleware:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] in ("http", "websocket"):
-            headers = dict(scope.get("headers", []))
-            pw = headers.get(b"x-pm-password", b"").decode()
-            if pw:
-                _request_password.set(pw)
-        await self.app(scope, receive, send)
-
-
-async def _current_sub() -> str:
-    password = _get_password()
-    key = _cache_key(password)
-    if not _token_cache.get(key, {}).get("sub"):
-        await _ensure_token()
-    return _token_cache.get(key, {}).get("sub", "ai_agent")
 
 
 @mcp.tool()

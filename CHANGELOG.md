@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.15.0] - 2026-05-25
+
+### 大副 (First Mate) MCP Server — 多 Agent 架构
+
+引入"大副"角色，作为管理型 Agent 负责审批、分配、监督，与工人 Agent 使用独立端口和工具集。
+
+#### 架构变更
+
+| 变更 | 说明 |
+|------|------|
+| `mcp_common.py` | 提取共享代码（认证、API 请求、中间件），工人和大副共用 |
+| `mcp_server_mate.py` | 大副 MCP Server，端口 9001，管理类工具集 |
+| `mcp_server.py` | 重构使用 mcp_common，端口 9000 不变 |
+| Docker Compose | 新增 `mcp-mate` 容器 |
+| `.env` | 新增 `first-mate:CHANGE-ME` 密码和 `MCP_MATE_PORT` |
+
+#### 大副工具集
+
+| 工具 | 说明 |
+|------|------|
+| `check_connection` | 测试大副身份连接 |
+| `get_context` | 全局概览（含待审批计划、无负责人 P0 Issue） |
+| `list_pending_plans` | 查看待审批 Plan 列表 |
+| `get_plan_detail` | 查看 Plan 完整详情（审批前必看） |
+| `approve_plan` | 审批通过 Plan |
+| `reject_plan(reason)` | 拒绝 Plan（必须填写原因） |
+| `list_issues` | 查询 Issue 列表（含 sort_by 排序） |
+| `get_issue_detail` | 查看 Issue 完整详情 |
+| `assign_issue` | 分配 Issue 给指定 Agent |
+| `set_issue_priority` | 调整 Issue 优先级 |
+| `update_issue_status` | 更新 Issue 状态 |
+| `add_issue_comment` | 添加管理评论 |
+| `check_notifications` | 检查通知 |
+| `mark_notification_read` | 标记通知已读 |
+| `get_agent_activities` | 查看 Agent 操作历史 |
+| `list_projects` | 列出项目 |
+| `list_milestones` | 查看里程碑 |
+
+#### MCP 配置示例
+
+```json
+{
+  "mcpServers": {
+    "project-manager": {
+      "url": "http://localhost:9000/mcp",
+      "headers": { "X-PM-Password": "CHANGE-ME" }
+    },
+    "project-manager-mate": {
+      "url": "http://localhost:9001/mcp",
+      "headers": { "X-PM-Password": "CHANGE-ME" }
+    }
+  }
+}
+```
+
 ## [0.14.0] - 2026-05-25
 
 ### MCP Agent 体验优化 v5（基于 03.kimi.2026-05-25_0505.md 测试报告）

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows
+from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows, agent_memory
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -15,3 +15,4 @@ api_router.include_router(activity_logs.router, prefix="/activity-logs", tags=["
 api_router.include_router(notifications.router, prefix="/notifications", tags=["通知"])
 api_router.include_router(stats.router, prefix="/stats", tags=["统计分析"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["工作流"])
+api_router.include_router(agent_memory.router, prefix="/agent-memories", tags=["Agent记忆"])

@@ -33,7 +33,7 @@ async def list_milestones(
 
     out = []
     for m in milestones:
-        stats = await db.execute(
+        direct_stats = await db.execute(
             select(
                 func.count(Issue.id).label("total"),
                 func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
@@ -41,7 +41,16 @@ async def list_milestones(
                 func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
             ).where(Issue.milestone_id == m.id)
         )
-        row = stats.one()
+        direct = direct_stats.one()
+
+        deferred_stats = await db.execute(
+            select(
+                func.count(Issue.id).label("total"),
+            ).where(Issue.deferred_to_milestone_id == m.id, Issue.status == IssueStatus.DEFERRED)
+        )
+        deferred = deferred_stats.one()
+
+        total = (direct.total or 0) + (deferred.total or 0)
         out.append(MilestoneReadWithStats(
             id=m.id,
             project_id=m.project_id,
@@ -52,10 +61,10 @@ async def list_milestones(
             due_date=m.due_date,
             created_at=m.created_at,
             updated_at=m.updated_at,
-            total_issues=row.total or 0,
-            open_issues=row.open or 0,
-            closed_issues=row.closed or 0,
-            deferred_issues=row.deferred or 0,
+            total_issues=total,
+            open_issues=direct.open or 0,
+            closed_issues=direct.closed or 0,
+            deferred_issues=(direct.deferred or 0) + (deferred.total or 0),
         ))
     return out
 
@@ -85,8 +94,7 @@ async def get_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
     if not milestone:
         raise HTTPException(status_code=404, detail="Milestone not found")
 
-    # 用 case-when 聚合统计该里程碑下的 issues
-    stats_result = await db.execute(
+    direct_result = await db.execute(
         select(
             func.count(Issue.id).label("total"),
             func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
@@ -94,9 +102,17 @@ async def get_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
             func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
         ).where(Issue.milestone_id == milestone_id)
     )
-    row = stats_result.one()
+    direct = direct_result.one()
 
-    # 构造返回数据，避免触发 lazy load
+    deferred_result = await db.execute(
+        select(
+            func.count(Issue.id).label("total"),
+        ).where(Issue.deferred_to_milestone_id == milestone_id, Issue.status == IssueStatus.DEFERRED)
+    )
+    deferred = deferred_result.one()
+
+    total = (direct.total or 0) + (deferred.total or 0)
+
     return MilestoneReadWithStats(
         id=milestone.id,
         title=milestone.title,
@@ -106,10 +122,10 @@ async def get_milestone(milestone_id: int, db: AsyncSession = Depends(get_db)):
         due_date=milestone.due_date,
         created_at=milestone.created_at,
         updated_at=milestone.updated_at,
-        total_issues=row.total or 0,
-        open_issues=row.open or 0,
-        closed_issues=row.closed or 0,
-        deferred_issues=row.deferred or 0,
+        total_issues=total,
+        open_issues=direct.open or 0,
+        closed_issues=direct.closed or 0,
+        deferred_issues=(direct.deferred or 0) + (deferred.total or 0),
     )
 
 

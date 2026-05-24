@@ -1,5 +1,97 @@
 # Changelog
 
+## [0.12.0] - 2026-05-25
+
+### MCP Agent 体验优化 v3（基于 03.kimi.20260525_0444.md 测试报告）
+
+基于 Kimi 第二轮 MCP 体验测试报告的问题修复，重点解决统计不准、通知为空、Plan 重提交等核心问题。
+
+#### P0-1: Milestone 统计不准（defer 后统计仍为 0）
+
+| 变更 | 说明 |
+|------|------|
+| 根因 | 统计逻辑只查询 `Issue.milestone_id`，而 defer 操作设置的是 `Issue.deferred_to_milestone_id` |
+| 修复 | 同时统计直接关联（`milestone_id`）和推迟关联（`deferred_to_milestone_id`）的 Issue，合并结果 |
+| 文件 | `backend/src/routes/milestones.py` |
+
+#### P0-2: 通知为空（Agent 操作后 check_notifications 返回空）
+
+| 变更 | 说明 |
+|------|------|
+| 根因 | Agent 操作后没有自我通知，审批通知需要人工操作后才触发 |
+| 修复 | Agent 创建 Issue/Plan 后给自己发送确认通知 |
+| 文件 | `backend/src/routes/issues.py` |
+
+#### P1-1: `list_issues` 缺少 sort_by 参数
+
+| 变更 | 说明 |
+|------|------|
+| MCP 工具 | `list_issues` 新增 `sort_by` 参数，支持 `created_at_desc/asc`、`updated_at_desc/asc`、`priority_asc/desc` |
+| 文件 | `backend/mcp_server.py` |
+
+#### P1-2: `list_comments` 缺少分页参数
+
+| 变更 | 说明 |
+|------|------|
+| MCP 工具 | `list_comments` 新增 `limit` 参数，默认 20 |
+| 后端 API | `GET /issues/{id}/comments` 新增 `limit` 查询参数 |
+| 文件 | `backend/mcp_server.py`, `backend/src/routes/issues.py` |
+
+#### P1-3: Plan reject 后无法修改重新提交（revise_plan）
+
+| 变更 | 说明 |
+|------|------|
+| MCP 工具 | 新增 `revise_plan(plan_id, title?, description?)` 修改被拒绝的 Plan 并重新提交审批 |
+| API 层 | Plan 从 `abandoned` → `pending_approval` 时清除 `reject_reason`、`approved_by`、`approved_at` |
+| 通知 | 重新提交时通知 admin |
+| 文件 | `backend/mcp_server.py`, `backend/src/routes/plans.py` |
+
+#### P1-4: `get_context` 我的状态按 created_by 筛选
+
+| 变更 | 说明 |
+|------|------|
+| 根因 | 原来用 `source=ai_agent` 筛选，会返回所有 Agent 创建的 Issue，不是当前 Agent 自己的 |
+| 修复 | 后端 `list_issues` 新增 `created_by` 参数，MCP 改用 `created_by=agent_name` 精确筛选 |
+| 增强 | "我的状态"新增"我提交的待审批 Plan"和"记忆条目"统计 |
+| 文件 | `backend/src/routes/issues.py`, `backend/mcp_server.py` |
+
+#### P1-5: `check_notifications` 新增 since 参数
+
+| 变更 | 说明 |
+|------|------|
+| MCP 工具 | `check_notifications` 新增 `since` 参数，支持 ISO 格式时间筛选 |
+| 后端 API | `GET /notifications` 新增 `since` 查询参数 |
+| 文件 | `backend/mcp_server.py`, `backend/src/routes/notifications.py` |
+
+#### P2-1: 工作流执行详情增强
+
+| 变更 | 说明 |
+|------|------|
+| `list_workflow_runs` | 显示错误信息（`error_message`）和上下文摘要（`context`，截断 100 字符） |
+| 文件 | `backend/mcp_server.py` |
+
+#### P2-2: Agent 记忆机制（agent_memory）
+
+| 变更 | 说明 |
+|------|------|
+| 模型 | 新增 `AgentMemory` 模型（agent_id, key, value, created_at, updated_at） |
+| API | `GET /api/v1/agent-memories` 列出记忆（支持 `key_prefix` 前缀筛选） |
+| API | `POST /api/v1/agent-memories` 设置记忆（key 相同则更新） |
+| API | `DELETE /api/v1/agent-memories/{id}` 删除记忆 |
+| MCP 工具 | `set_agent_memory(key, value)` 保存 Agent 记忆（持久化，跨会话保留） |
+| MCP 工具 | `get_agent_memory(key_prefix?, limit?)` 查询 Agent 记忆 |
+| 数据库迁移 | 自动创建 `agent_memories` 表 + 索引 |
+| `get_context` | "我的状态"新增记忆条目数统计 |
+| 文件 | `backend/src/models/agent_memory.py`, `backend/src/routes/agent_memory.py`, `backend/mcp_server.py`, `backend/main.py` |
+
+### 版本号
+
+| 文件 | 变更 |
+|------|------|
+| `VERSION` | 0.11.0 → 0.12.0 |
+
+---
+
 ## [0.11.0] - 2026-05-25
 
 ### MCP Agent 体验优化 v2（基于 03.kimi.md 测试报告）

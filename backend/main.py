@@ -155,6 +155,22 @@ async def _run_migrations(conn):
         except Exception as e:
             logger.warning(f"Failed to add created_by to issues: {e}")
 
+    # Phase 8: agent_memories 表
+    result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_memories'"))
+    if not result.fetchone():
+        await conn.execute(text("""
+            CREATE TABLE agent_memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id VARCHAR(100) NOT NULL,
+                key VARCHAR(200) NOT NULL,
+                value TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        await conn.execute(text("CREATE INDEX ix_agent_memories_agent_id ON agent_memories(agent_id)"))
+        logger.info("Created agent_memories table")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

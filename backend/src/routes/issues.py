@@ -28,6 +28,7 @@ async def list_issues(
     priority: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     assignee: Optional[str] = Query(None),
+    created_by: Optional[str] = Query(None),
     milestone_id: Optional[int] = Query(None),
     deferred_only: bool = Query(False),
     search: Optional[str] = Query(None),
@@ -47,6 +48,8 @@ async def list_issues(
         query = query.where(Issue.source == source)
     if assignee:
         query = query.where(Issue.assignee == assignee)
+    if created_by:
+        query = query.where(Issue.created_by == created_by)
     if milestone_id:
         query = query.where(Issue.milestone_id == milestone_id)
     if deferred_only:
@@ -98,6 +101,18 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
             body=issue.title,
             entity_type="issue", entity_id=issue.id,
             created_by=user["sub"],
+            project_id=issue.project_id,
+        )
+
+    # 给创建者发确认通知
+    if user["role"] == "agent":
+        await create_notification(
+            db, recipient=user["sub"],
+            type=NotificationType.INFO,
+            title=f"Issue #{issue.id} 已创建",
+            body=f"[{issue.priority}] {issue.title}",
+            entity_type="issue", entity_id=issue.id,
+            created_by="system",
             project_id=issue.project_id,
         )
 
@@ -266,10 +281,10 @@ async def undefer_issue(
 
 
 @router.get("/{issue_id}/comments", response_model=List[CommentRead])
-async def list_comments(issue_id: int, db: AsyncSession = Depends(get_db)):
+async def list_comments(issue_id: int, limit: int = Query(50, ge=1, le=200), db: AsyncSession = Depends(get_db)):
     """获取 Issue 的评论列表"""
     result = await db.execute(
-        select(Comment).where(Comment.issue_id == issue_id).order_by(asc(Comment.created_at))
+        select(Comment).where(Comment.issue_id == issue_id).order_by(asc(Comment.created_at)).limit(limit)
     )
     return result.scalars().all()
 

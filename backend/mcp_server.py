@@ -224,16 +224,29 @@ async def get_context(project_id: Optional[int] = None) -> str:
     # 6. 我的状态
     lines.append("")
     lines.append(f"=== 我的状态 ({agent_name}) ===")
-    my_issues_resp = await _api_request("GET", f"{API_BASE}/issues", params={"source": "ai_agent", "status": "open", "limit": 5})
+    my_issues_resp = await _api_request("GET", f"{API_BASE}/issues", params={"created_by": agent_name, "status": "open", "limit": 5})
     if my_issues_resp.status_code < 400:
         my_data = my_issues_resp.json()
         my_open = my_data.get("total", 0)
         lines.append(f"我创建的 Open Issue: {my_open}")
 
+    my_plans_resp = await _api_request("GET", f"{API_BASE}/plans", params={"status": "pending_approval"})
+    if my_plans_resp.status_code < 400:
+        my_plans = my_plans_resp.json()
+        my_pending = sum(1 for p in my_plans if p.get("proposed_by_name") == agent_name)
+        if my_pending > 0:
+            lines.append(f"我提交的待审批 Plan: {my_pending}")
+
     notif_resp = await _api_request("GET", f"{API_BASE}/notifications", params={"unread_only": "true", "limit": 1})
     if notif_resp.status_code < 400:
         notif_data = notif_resp.json()
         lines.append(f"未读通知: {notif_data.get('total', 0)}")
+
+    mem_resp = await _api_request("GET", f"{API_BASE}/agent-memories", params={"limit": 5})
+    if mem_resp.status_code < 400:
+        mem_data = mem_resp.json()
+        if mem_data:
+            lines.append(f"记忆条目: {len(mem_data)}")
 
     return "\n".join(lines)
 
@@ -324,12 +337,14 @@ async def list_issues(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     source: Optional[str] = None,
+    created_by: Optional[str] = None,
     milestone_id: Optional[int] = None,
     deferred_only: bool = False,
     limit: int = 20,
+    sort_by: str = "created_at_desc",
 ) -> str:
-    """查询 issues 列表（含描述、时间、负责人、里程碑等完整信息）"""
-    params = {"limit": limit}
+    """查询 issues 列表（含描述、时间、负责人、里程碑等完整信息）。sort_by 可选: created_at_desc/created_at_asc/updated_at_desc/updated_at_asc/priority_asc/priority_desc。created_by 按创建者筛选（如 hermes-agent）"""
+    params = {"limit": limit, "sort_by": sort_by}
     if project_id:
         params["project_id"] = project_id
     if status:
@@ -338,6 +353,8 @@ async def list_issues(
         params["priority"] = priority
     if source:
         params["source"] = source
+    if created_by:
+        params["created_by"] = created_by
     if milestone_id:
         params["milestone_id"] = milestone_id
     if deferred_only:
@@ -423,9 +440,10 @@ async def add_issue_comment(issue_id: int, content: str) -> str:
 
 
 @mcp.tool()
-async def list_comments(issue_id: int) -> str:
-    """查看 Issue 的评论列表"""
-    resp = await _api_request("GET", f"{API_BASE}/issues/{issue_id}/comments")
+async def list_comments(issue_id: int, limit: int = 50) -> str:
+    """获取 Issue 的评论列表"""
+    params = {"limit": limit}
+    resp = await _api_request("GET", f"{API_BASE}/issues/{issue_id}/comments", params=params)
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     items = resp.json()
@@ -492,6 +510,30 @@ async def list_plans(status: Optional[str] = None, project_id: Optional[int] = N
             reject = f"\n    拒绝原因: {item['reject_reason']}"
         lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (by {item.get('proposed_by_name') or item['proposed_by']}){desc_preview}{progress}{approval}{reject}")
     return "\n".join(lines)
+
+
+@mcp.tool()
+async def revise_plan(plan_id: int, title: Optional[str] = None, description: Optional[str] = None) -> str:
+    """修改被拒绝的 Plan 并重新提交审批。只有 abandoned(rejected) 状态的 Plan 才能修改。"""
+    plan_resp = await _api_request("GET", f"{API_BASE}/plans/{plan_id}")
+    if plan_resp.status_code >= 400:
+        return f"Error: Plan #{plan_id} not found ({plan_resp.status_code})"
+    plan_data = plan_resp.json()
+    plan_status = plan_data.get("status", "")
+    if plan_status != "abandoned":
+        return f"Error: Plan #{plan_id} 状态为 '{plan_status}'，无法修改。只有被拒绝(abandoned)的 Plan 才能修改重新提交。"
+
+    update_payload = {"status": "pending_approval"}
+    if title:
+        update_payload["title"] = title
+    if description:
+        update_payload["description"] = description
+
+    resp = await _api_request("PUT", f"{API_BASE}/plans/{plan_id}", json=update_payload)
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    data = resp.json()
+    return f"Plan #{plan_id} 已修改并重新提交审批 (status={data['status']})"
 
 
 @mcp.tool()
@@ -639,11 +681,13 @@ async def get_server_credentials(server_id: int) -> str:
 # ── Notifications ───────────────────────────────────
 
 @mcp.tool()
-async def check_notifications(unread_only: bool = False, limit: int = 10) -> str:
-    """检查当前 Agent 的通知"""
+async def check_notifications(unread_only: bool = False, limit: int = 10, since: str = "") -> str:
+    """检查当前 Agent 的通知。since 可选，格式 ISO8601（如 2026-05-25T04:00:00），只返回该时间之后的通知。"""
     params = {"limit": limit}
     if unread_only:
         params["unread_only"] = "true"
+    if since:
+        params["since"] = since
     resp = await _api_request("GET", f"{API_BASE}/notifications", params=params)
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
@@ -749,7 +793,46 @@ async def list_workflow_runs(workflow_id: Optional[int] = None, limit: int = 10)
     lines = [f"Total: {len(items)} runs"]
     for item in items:
         wf_name = item.get('workflow_name', '?')
-        lines.append(f"  Run #{item['id']} [{item['status']}] {wf_name} (step {item['current_step_index']}, by {item.get('triggered_by', '?')})")
+        err = f"\n    错误: {item['error_message']}" if item.get('error_message') else ""
+        ctx = ""
+        if item.get('context'):
+            ctx_str = str(item['context'])
+            if len(ctx_str) > 100:
+                ctx_str = ctx_str[:100] + "..."
+            ctx = f"\n    上下文: {ctx_str}"
+        lines.append(f"  Run #{item['id']} [{item['status']}] {wf_name} (step {item['current_step_index']}, by {item.get('triggered_by', '?')}){err}{ctx}")
+    return "\n".join(lines)
+
+
+# ── Agent Memory ───────────────────────────────────
+
+@mcp.tool()
+async def set_agent_memory(key: str, value: str) -> str:
+    """保存 Agent 记忆（持久化，跨会话保留）。key 相同则更新。用于记住工作状态、用户偏好、待办事项等。"""
+    resp = await _api_request("POST", f"{API_BASE}/agent-memories", json={"key": key, "value": value})
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    data = resp.json()
+    return f"Memory saved: {data['key']} = {data['value'][:100]}{'...' if len(data.get('value', '')) > 100 else ''}"
+
+
+@mcp.tool()
+async def get_agent_memory(key_prefix: str = "", limit: int = 50) -> str:
+    """查询 Agent 记忆。key_prefix 可选，按前缀筛选。返回当前 Agent 保存的所有记忆。"""
+    params = {"limit": limit}
+    if key_prefix:
+        params["key_prefix"] = key_prefix
+    resp = await _api_request("GET", f"{API_BASE}/agent-memories", params=params)
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    items = resp.json()
+    if not items:
+        return "No memories found."
+    lines = [f"Total: {len(items)} memories"]
+    for item in items:
+        val = item.get('value', '') or ''
+        val_preview = val[:80] + "..." if len(val) > 80 else val
+        lines.append(f"  [{item['key']}] = {val_preview}")
     return "\n".join(lines)
 
 

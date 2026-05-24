@@ -28,6 +28,7 @@ async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     unread_only: bool = Query(False),
     project_id: Optional[int] = Query(None),
+    since: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
@@ -37,6 +38,13 @@ async def list_notifications(
         query = query.where(Notification.read == False)
     if project_id is not None:
         query = query.where(Notification.project_id == project_id)
+    if since:
+        from datetime import datetime as dt
+        try:
+            since_dt = dt.fromisoformat(since)
+            query = query.where(Notification.created_at >= since_dt)
+        except (ValueError, TypeError):
+            pass
     query = query.order_by(desc(Notification.created_at))
 
     count_query = select(func.count()).select_from(query.subquery())

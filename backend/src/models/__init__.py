@@ -12,6 +12,7 @@ from src.models.workflow import (
     Workflow, WorkflowStep, WorkflowRun,
     WorkflowTrigger, WorkflowStatus, StepType, OnFailure, WorkflowRunStatus,
 )
+from src.models.agent_memory import AgentMemory
 
 __all__ = [
     "Base",
@@ -26,4 +27,5 @@ __all__ = [
     "Server", "ServerType", "ServerStatus", "ServerEnvironment",
     "Workflow", "WorkflowStep", "WorkflowRun",
     "WorkflowTrigger", "WorkflowStatus", "StepType", "OnFailure", "WorkflowRunStatus",
+    "AgentMemory",
 ]

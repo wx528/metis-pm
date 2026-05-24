@@ -93,6 +93,19 @@ async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user
             project_id=plan.project_id,
         )
 
+        # 给提议者发确认通知
+        proposer = plan.proposed_by_name or plan.proposed_by
+        if proposer and proposer != "admin" and proposer != "user":
+            await create_notification(
+                db, recipient=proposer,
+                type=NotificationType.INFO,
+                title=f"Plan #{plan.id} 已提交，等待审批",
+                body=plan.title,
+                entity_type="plan", entity_id=plan.id,
+                created_by="system",
+                project_id=plan.project_id,
+            )
+
     return plan
 
 
@@ -118,6 +131,13 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
     old_values = {k: getattr(plan, k) for k in ["title", "description", "status", "current_milestone_id"]}
 
     update_data = data.model_dump(exclude_unset=True)
+
+    # 如果从 abandoned 重新提交为 pending_approval，清除 reject_reason
+    if update_data.get("status") == PlanStatus.PENDING_APPROVAL and plan.status == PlanStatus.ABANDONED:
+        plan.reject_reason = None
+        plan.approved_by = None
+        plan.approved_at = None
+
     for key, value in update_data.items():
         setattr(plan, key, value)
 
@@ -131,6 +151,19 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
         new_value={k: getattr(plan, k) for k in old_values.keys()},
         project_id=plan.project_id,
     )
+
+    # 重新提交审批时通知 admin
+    if update_data.get("status") == PlanStatus.PENDING_APPROVAL and old_values.get("status") == PlanStatus.ABANDONED:
+        await create_notification(
+            db, recipient="admin",
+            type=NotificationType.APPROVAL_NEEDED,
+            title=f"Plan #{plan.id} 重新提交审批",
+            body=plan.title,
+            entity_type="plan", entity_id=plan.id,
+            created_by=user["sub"],
+            project_id=plan.project_id,
+        )
+
     return plan
 
 

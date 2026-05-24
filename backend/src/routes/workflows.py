@@ -20,14 +20,14 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # ── Workflow CRUD ─────────────────────────────────
 
-@router.get("", response_model=List[WorkflowRead])
+@router.get("", response_model=List[WorkflowReadWithSteps])
 async def list_workflows(
     project_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """工作流列表"""
-    query = select(Workflow).order_by(desc(Workflow.created_at))
+    """工作流列表（含步骤概要）"""
+    query = select(Workflow).order_by(desc(Workflow.created_at)).options(selectinload(Workflow.steps))
     if project_id:
         query = query.where(Workflow.project_id == project_id)
     if status:
@@ -83,6 +83,55 @@ async def create_workflow(
         project_id=workflow.project_id,
     )
     return workflow
+
+
+# ── Workflow Runs (must be before /{workflow_id} to avoid route conflict) ──
+
+@router.get("/runs", response_model=List[WorkflowRunReadWithDetails])
+async def list_workflow_runs(
+    workflow_id: Optional[int] = Query(None),
+    project_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """工作流执行记录"""
+    query = select(WorkflowRun).order_by(desc(WorkflowRun.started_at))
+    if workflow_id:
+        query = query.where(WorkflowRun.workflow_id == workflow_id)
+    if status:
+        query = query.where(WorkflowRun.status == status)
+    query = query.limit(limit)
+    result = await db.execute(query)
+    runs = result.scalars().all()
+
+    out = []
+    for run in runs:
+        wf = await db.execute(select(Workflow.name).where(Workflow.id == run.workflow_id))
+        wf_name = wf.scalar()
+        out.append(WorkflowRunReadWithDetails(
+            id=run.id,
+            workflow_id=run.workflow_id,
+            triggered_by=run.triggered_by,
+            status=run.status,
+            current_step_index=run.current_step_index,
+            context=run.context,
+            error_message=run.error_message,
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            workflow_name=wf_name,
+        ))
+    return out
+
+
+@router.get("/runs/{run_id}", response_model=WorkflowRunRead)
+async def get_workflow_run(run_id: int, db: AsyncSession = Depends(get_db)):
+    """工作流执行详情"""
+    result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    return run
 
 
 @router.get("/{workflow_id}", response_model=WorkflowReadWithSteps)
@@ -196,56 +245,6 @@ async def delete_workflow_step(
     await db.delete(step)
     await db.commit()
     return None
-
-
-# ── Workflow Runs ─────────────────────────────────
-
-@router.get("/runs", response_model=List[WorkflowRunReadWithDetails])
-async def list_workflow_runs(
-    workflow_id: Optional[int] = Query(None),
-    project_id: Optional[int] = Query(None),
-    status: Optional[str] = Query(None),
-    limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-):
-    """工作流执行记录"""
-    query = select(WorkflowRun).order_by(desc(WorkflowRun.started_at))
-    if workflow_id:
-        query = query.where(WorkflowRun.workflow_id == workflow_id)
-    if status:
-        query = query.where(WorkflowRun.status == status)
-    query = query.limit(limit)
-    result = await db.execute(query)
-    runs = result.scalars().all()
-
-    # 获取 workflow name
-    out = []
-    for run in runs:
-        wf = await db.execute(select(Workflow.name).where(Workflow.id == run.workflow_id))
-        wf_name = wf.scalar()
-        out.append(WorkflowRunReadWithDetails(
-            id=run.id,
-            workflow_id=run.workflow_id,
-            triggered_by=run.triggered_by,
-            status=run.status,
-            current_step_index=run.current_step_index,
-            context=run.context,
-            error_message=run.error_message,
-            started_at=run.started_at,
-            completed_at=run.completed_at,
-            workflow_name=wf_name,
-        ))
-    return out
-
-
-@router.get("/runs/{run_id}", response_model=WorkflowRunRead)
-async def get_workflow_run(run_id: int, db: AsyncSession = Depends(get_db)):
-    """工作流执行详情"""
-    result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
-    run = result.scalar_one_or_none()
-    if not run:
-        raise HTTPException(status_code=404, detail="Workflow run not found")
-    return run
 
 
 @router.post("/{workflow_id}/trigger", response_model=WorkflowRunRead, status_code=201)

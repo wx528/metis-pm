@@ -232,6 +232,48 @@ async def defer_issue(
     return issue
 
 
+@router.post("/{issue_id}/undefer", response_model=IssueRead)
+async def undefer_issue(
+    issue_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """取消暂缓，将 deferred issue 恢复为 open"""
+    result = await db.execute(select(Issue).where(Issue.id == issue_id))
+    issue = result.scalar_one_or_none()
+    if not issue:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    if issue.status != IssueStatus.DEFERRED:
+        raise HTTPException(status_code=400, detail="Only deferred issues can be undeferred")
+
+    old_status = issue.status
+    old_milestone = issue.deferred_to_milestone_id
+    issue.status = IssueStatus.OPEN
+    issue.deferred_to_milestone_id = None
+    issue.deferred_reason = None
+
+    await db.commit()
+    await db.refresh(issue)
+
+    await log_activity(
+        db, entity_type="issue", entity_id=issue.id,
+        action="undeferred", actor=user["sub"],
+        old_value={"status": old_status, "deferred_to_milestone_id": old_milestone},
+        new_value={"status": issue.status},
+        project_id=issue.project_id,
+    )
+    return issue
+
+
+@router.get("/{issue_id}/comments", response_model=List[CommentRead])
+async def list_comments(issue_id: int, db: AsyncSession = Depends(get_db)):
+    """获取 Issue 的评论列表"""
+    result = await db.execute(
+        select(Comment).where(Comment.issue_id == issue_id).order_by(asc(Comment.created_at))
+    )
+    return result.scalars().all()
+
+
 @router.post("/{issue_id}/comments", response_model=CommentRead, status_code=201)
 async def add_comment(issue_id: int, data: CommentCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Issue).where(Issue.id == issue_id))

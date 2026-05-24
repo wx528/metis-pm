@@ -98,13 +98,15 @@ Agent 通过 MCP 协议与系统交互，以下是核心工具：
 
 | 工具 | 说明 |
 |------|------|
-| `get_context` | 全局态势感知：一次调用返回项目概览、紧急告警、待审批计划、最近活动、我的状态 |
+| `get_context` | 【首选入口】全局态势感知：一次调用返回项目概览、紧急告警、待审批计划、最近活动、我的状态 |
 | `create_issue` | 创建 Issue（返回完整对象含描述、时间等） |
 | `list_issues` | 查询 Issue 列表（含描述、时间、负责人、推迟信息） |
 | `update_issue_status` | 更新 Issue 状态 |
 | `update_issue_priority` | 更新 Issue 优先级 |
 | `defer_issue` | 暂缓 Issue 到后期阶段 |
-| `add_issue_comment` | 添加评论 |
+| `undefer_issue` | 取消暂缓，恢复 deferred Issue 为 open |
+| `add_issue_comment` | 添加评论（返回评论 ID、作者、时间） |
+| `list_comments` | 查看 Issue 评论列表（回溯讨论历史） |
 | `propose_plan` | 提议 Plan（返回完整对象含描述、时间） |
 | `list_plans` | 查询 Plan 列表（含描述、拒绝原因、审批信息、进度统计） |
 | `update_plan_progress` | 更新 Plan 进度（仅 active/completed 状态可操作） |
@@ -114,7 +116,7 @@ Agent 通过 MCP 协议与系统交互，以下是核心工具：
 | `create_milestone` | 创建里程碑 |
 | `list_servers` | 查询服务器列表 |
 | `get_server_credentials` | 获取服务器凭据（仅 admin） |
-| `list_workflows` | 查询工作流列表 |
+| `list_workflows` | 查询工作流列表（含步骤概要） |
 | `create_workflow` | 创建工作流 |
 | `trigger_workflow` | 手动触发工作流 |
 | `list_workflow_runs` | 查询工作流执行记录 |

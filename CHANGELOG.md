@@ -1,5 +1,75 @@
 # Changelog
 
+## [0.11.0] - 2026-05-25
+
+### MCP Agent 体验优化 v2（基于 03.kimi.md 测试报告）
+
+基于 Kimi MCP 体验测试报告的遗留问题修复，进一步提升 Agent 交互质量。
+
+#### P0-1: `get_context` 标注为首选入口
+
+| 变更 | 说明 |
+|------|------|
+| 工具描述 | 添加【首选入口】标记，建议每次会话开始时首先调用 |
+| Agent 身份 | `get_context` 中 `source` 参数从硬编码 `"ai_agent"` 改为动态获取 `_current_sub()` |
+
+#### P0-2: 新增 `list_comments` MCP 工具
+
+| 变更 | 说明 |
+|------|------|
+| API 路由 | `GET /api/v1/issues/{issue_id}/comments` 新增评论列表端点 |
+| MCP 工具 | `list_comments(issue_id)` 查看 Issue 的评论历史，解决"无法回溯 Issue 讨论历史"问题 |
+
+#### P0-3: 修复 `list_workflow_runs` 422 Bug
+
+| 变更 | 说明 |
+|------|------|
+| 根因 | FastAPI 路由匹配顺序：`/runs` 被 `/{workflow_id}` 先匹配，`"runs"` 被解析为 workflow_id |
+| 修复 | 将 `/runs` 和 `/runs/{run_id}` 路由移到 `/{workflow_id}` 之前定义 |
+
+#### P1-1: `add_issue_comment` 返回完整评论对象
+
+| 变更 | 说明 |
+|------|------|
+| 返回格式 | 从 `Comment added to Issue #N` 改为 `Comment #ID added to Issue #N by AUTHOR at TIME` |
+
+#### P1-2: 统一 `update_issue_status` / `update_issue_priority` 返回格式
+
+| 变更 | 说明 |
+|------|------|
+| 统一格式 | 两者均返回 `Issue #ID updated\n  标题: X | 状态: Y | 优先级: Z | updated_at=T` |
+
+#### P1-3: `list_workflows` 返回 steps 概要
+
+| 变更 | 说明 |
+|------|------|
+| API 层 | `GET /workflows` 返回类型从 `WorkflowRead` 升级为 `WorkflowReadWithSteps`，含 steps 列表 |
+| MCP 层 | 显示每个步骤的 `step_type:name` 而非仅数量 |
+
+#### P1-4: 新增 `undefer_issue` 工具
+
+| 变更 | 说明 |
+|------|------|
+| API 路由 | `POST /api/v1/issues/{issue_id}/undefer` 取消暂缓，恢复为 open |
+| MCP 工具 | `undefer_issue(issue_id)` 将 deferred issue 恢复为 open |
+| 状态约束 | 只有 deferred 状态的 Issue 才能执行 undefer |
+
+#### P1-5: 通知机制修复 — Agent 身份动态获取
+
+| 变更 | 说明 |
+|------|------|
+| `propose_plan` | `proposed_by` 从硬编码 `"ai_agent"` 改为 `_current_sub()` 动态获取 |
+| `create_issue` | `source` 从硬编码 `"ai_agent"` 改为 `_current_sub()` 动态获取 |
+| `get_context` | 我的状态查询 `source` 从硬编码改为动态获取 |
+
+### 版本号
+
+| 文件 | 变更 |
+|------|------|
+| `VERSION` | 0.10.0 → 0.11.0 |
+
+---
+
 ## [0.10.0] - 2026-05-25
 
 ### MCP Agent 体验优化（P0 修复）

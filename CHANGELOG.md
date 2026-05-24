@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.10.0] - 2026-05-25
+
+### MCP Agent 体验优化（P0 修复）
+
+基于 MCP 体验测试报告（03.ember.md）的 P0 问题修复，显著改善 Agent 交互体验。
+
+#### P0-1: 新增 `get_context` 全局态势感知工具
+
+之前 Agent 需要 6-7 次工具调用才能拼出全局状态，现在一次调用即可获取完整上下文。
+
+| 返回内容 | 说明 |
+|----------|------|
+| 全局概览 | Issues/Plans/Servers 统计（含 P0/P1/Open/In Progress/Deferred/AI Agent 分项） |
+| 紧急告警 | P0 Issue、待审批 Plan、离线服务器 |
+| 待审批计划 | 列表含描述预览和提议者 |
+| 最近活动 | 最近 10 条 ActivityLog |
+| 最近 Issue | 最近 5 个 Issue |
+| 我的状态 | 当前 Agent 创建的 Open Issue 数、未读通知数 |
+
+#### P0-2: `list_plans` 返回完整信息
+
+| 新增字段 | 说明 |
+|----------|------|
+| `description` | 计划描述（100 字符截断预览） |
+| `reject_reason` | 拒绝原因（被拒绝的 Plan 显示） |
+| `approved_by` / `approved_at` | 审批信息 |
+| `item_done_count / item_count` | 进度统计 |
+
+#### P0-3: `update_plan_progress` 状态约束
+
+| 层级 | 约束 |
+|------|------|
+| MCP 层 | 调用前先查询 Plan 状态，非 active/completed 时返回错误提示 |
+| API 层 | `POST /plans/{id}/items` 增加状态检查，非 active/completed 时返回 400 |
+
+#### P0-4: 创建/更新操作返回完整对象
+
+| 工具 | 新增返回字段 |
+|------|-------------|
+| `create_issue` | description, labels, assignee, milestone_id, source, created_at |
+| `update_issue_status` | title, priority, updated_at |
+| `update_issue_priority` | title, status, updated_at |
+| `propose_plan` | description, project_id, created_at |
+
+#### P0-5: `list_issues` 返回完整信息
+
+| 新增字段 | 说明 |
+|----------|------|
+| `description` | 描述预览（80 字符截断） |
+| `created_at` / `updated_at` | 创建/更新时间 |
+| `assignee` | 负责人 |
+| `issue_type` | Issue 类型 |
+| `deferred_to_milestone_id` / `deferred_reason` | 推迟信息 |
+
+### Bug 修复
+
+| 问题 | 修复 |
+|------|------|
+| `reject_plan` 路由缺少装饰器 | 添加 `@router.post("/{plan_id}/reject")` 装饰器，修复 API 404 |
+| `reject_plan` reason 参数未从 body 解析 | 改为 `Body(None, embed=True)` 从 request body 解析 reason |
+| `create_plan_item` 无状态约束 | 新增 Plan 状态检查，pending_approval/draft 时禁止添加进度项 |
+
+### 版本号
+
+| 文件 | 变更 |
+|------|------|
+| `VERSION` | 0.9.0 → 0.10.0 |
+| `backend/main.py` | 版本号同步 |
+| `docker-compose.yml` | APP_VERSION 同步 |
+
+---
+
 ## [0.9.0] - 2026-05-23
 
 ### MCP Server 多身份认证 + Streamable HTTP 传输

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func, case
 from sqlalchemy.orm import selectinload
@@ -203,7 +203,10 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
         pass
 
     return plan
-async def reject_plan(plan_id: int, reason: Optional[str] = None, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+
+
+@router.post("/{plan_id}/reject", response_model=PlanRead)
+async def reject_plan(plan_id: int, reason: Optional[str] = Body(None, embed=True), db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     result = await db.execute(select(Plan).where(Plan.id == plan_id))
     plan = result.scalar_one_or_none()
     if not plan:
@@ -258,6 +261,8 @@ async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession 
     plan = plan_result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
+    if plan.status not in (PlanStatus.ACTIVE, PlanStatus.COMPLETED):
+        raise HTTPException(status_code=400, detail=f"Plan 状态为 '{plan.status}'，无法添加进度项。只有 active 或 completed 状态的 Plan 才能更新进度。")
 
     item = PlanItem(plan_id=plan_id, **data.model_dump())
     db.add(item)

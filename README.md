@@ -92,6 +92,35 @@ AGENT_PASSWORDS=trae:CHANGE-ME,hermes-agent:CHANGE-ME,cline:CHANGE-ME
 
 HTTP 模式通过 `X-PM-Password` 请求头传递密码，stdio 模式通过 `PM_AGENT_PASSWORD` 环境变量。
 
+## MCP 工具
+
+Agent 通过 MCP 协议与系统交互，以下是核心工具：
+
+| 工具 | 说明 |
+|------|------|
+| `get_context` | 全局态势感知：一次调用返回项目概览、紧急告警、待审批计划、最近活动、我的状态 |
+| `create_issue` | 创建 Issue（返回完整对象含描述、时间等） |
+| `list_issues` | 查询 Issue 列表（含描述、时间、负责人、推迟信息） |
+| `update_issue_status` | 更新 Issue 状态 |
+| `update_issue_priority` | 更新 Issue 优先级 |
+| `defer_issue` | 暂缓 Issue 到后期阶段 |
+| `add_issue_comment` | 添加评论 |
+| `propose_plan` | 提议 Plan（返回完整对象含描述、时间） |
+| `list_plans` | 查询 Plan 列表（含描述、拒绝原因、审批信息、进度统计） |
+| `update_plan_progress` | 更新 Plan 进度（仅 active/completed 状态可操作） |
+| `check_notifications` | 检查通知 |
+| `mark_notification_read` | 标记通知已读 |
+| `list_milestones` | 查询里程碑列表 |
+| `create_milestone` | 创建里程碑 |
+| `list_servers` | 查询服务器列表 |
+| `get_server_credentials` | 获取服务器凭据（仅 admin） |
+| `list_workflows` | 查询工作流列表 |
+| `create_workflow` | 创建工作流 |
+| `trigger_workflow` | 手动触发工作流 |
+| `list_workflow_runs` | 查询工作流执行记录 |
+
+> `get_context` 是 Agent 入口首选工具，替代多次 `list_issues` + `list_plans` + `check_notifications` 调用。
+
 ## 数据模型
 
 ### Issue（问题/需求/缺陷）
@@ -281,8 +310,10 @@ curl -X POST http://localhost:8000/api/v1/plans/1/approve \
   -H "Authorization: Bearer <token>"
 
 # 或拒绝并说明原因
-curl -X POST "http://localhost:8000/api/v1/plans/1/reject?reason=优先级不足" \
-  -H "Authorization: Bearer <token>"
+curl -X POST "http://localhost:8000/api/v1/plans/1/reject" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"reason": "优先级不足"}'
 ```
 
 ## 技术栈

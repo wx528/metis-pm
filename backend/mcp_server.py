@@ -153,6 +153,89 @@ async def check_connection() -> str:
             return f"ERROR: API returned {resp.status_code}. Is the backend running?"
 
 
+@mcp.tool()
+async def get_context(project_id: Optional[int] = None) -> str:
+    """获取全局态势感知：一次调用返回项目概览、紧急告警、待审批计划、最近活动、我的状态。替代多次 list 调用。"""
+    lines = []
+    agent_name = _current_sub()
+
+    # 1. Dashboard 概览
+    params = {}
+    if project_id:
+        params["project_id"] = project_id
+    resp = await _api_request("GET", f"{API_BASE}/dashboard", params=params)
+    if resp.status_code >= 400:
+        return f"Error fetching dashboard: {resp.status_code} - {resp.text}"
+    dash = resp.json()
+
+    issues = dash.get("issues", {})
+    plans = dash.get("plans", {})
+    servers = dash.get("servers", {})
+
+    lines.append("=== 全局概览 ===")
+    lines.append(f"Issues: {issues.get('total',0)} total | P0: {issues.get('p0',0)} | P1: {issues.get('p1',0)} | Open: {issues.get('open',0)} | In Progress: {issues.get('in_progress',0)} | Deferred: {issues.get('deferred',0)} | AI Agent: {issues.get('ai_agent',0)}")
+    lines.append(f"Plans: {plans.get('total',0)} total | Pending Approval: {plans.get('pending_approval',0)} | Active: {plans.get('active',0)}")
+    lines.append(f"Servers: {servers.get('total',0)} total | Active: {servers.get('active',0)} | Maintenance: {servers.get('maintenance',0)} | Offline: {servers.get('offline',0)}")
+
+    # 2. 紧急告警
+    alerts = []
+    if issues.get("p0", 0) > 0:
+        alerts.append(f"⚠️ {issues['p0']} 个 P0 紧急 Issue 需要立即处理")
+    if plans.get("pending_approval", 0) > 0:
+        alerts.append(f"📋 {plans['pending_approval']} 个 Plan 等待审批")
+    if servers.get("offline", 0) > 0:
+        alerts.append(f"🔴 {servers['offline']} 台服务器离线")
+    if alerts:
+        lines.append("")
+        lines.append("=== 紧急告警 ===")
+        lines.extend(alerts)
+    else:
+        lines.append("")
+        lines.append("=== 紧急告警 ===")
+        lines.append("无")
+
+    # 3. 待审批计划
+    pending_plans = dash.get("pending_plans", [])
+    if pending_plans:
+        lines.append("")
+        lines.append("=== 待审批计划 ===")
+        for p in pending_plans:
+            desc_preview = f" — {p['description'][:80]}..." if p.get("description") and len(p["description"]) > 80 else (f" — {p['description']}" if p.get("description") else "")
+            lines.append(f"  Plan #{p['id']}: {p['title']}{desc_preview} (by {p.get('proposed_by','?')})")
+
+    # 4. 最近活动
+    recent = dash.get("recent_activities", [])
+    if recent:
+        lines.append("")
+        lines.append("=== 最近活动 ===")
+        for a in recent[:10]:
+            lines.append(f"  [{a['entity_type']}#{a['entity_id']}] {a['action']} by {a.get('actor','?')}")
+
+    # 5. 最近 Issue
+    recent_issues = dash.get("recent_issues", [])
+    if recent_issues:
+        lines.append("")
+        lines.append("=== 最近 Issue ===")
+        for i in recent_issues[:5]:
+            lines.append(f"  Issue #{i['id']} [{i['priority']}] {i['title']} ({i['status']}, source={i['source']})")
+
+    # 6. 我的状态
+    lines.append("")
+    lines.append(f"=== 我的状态 ({agent_name}) ===")
+    my_issues_resp = await _api_request("GET", f"{API_BASE}/issues", params={"source": "ai_agent", "status": "open", "limit": 5})
+    if my_issues_resp.status_code < 400:
+        my_data = my_issues_resp.json()
+        my_open = my_data.get("total", 0)
+        lines.append(f"我创建的 Open Issue: {my_open}")
+
+    notif_resp = await _api_request("GET", f"{API_BASE}/notifications", params={"unread_only": "true", "limit": 1})
+    if notif_resp.status_code < 400:
+        notif_data = notif_resp.json()
+        lines.append(f"未读通知: {notif_data.get('total', 0)}")
+
+    return "\n".join(lines)
+
+
 # ── Projects ────────────────────────────────────────
 
 @mcp.tool()
@@ -225,7 +308,11 @@ async def create_issue(
         return f"Error: {resp.status_code} - {resp.text}"
     data = resp.json()
     project_info = f" (project_id={data.get('project_id')})" if data.get('project_id') else ""
-    return f"Issue #{data['id']} created: [{data['priority']}] {data['title']} (status={data['status']}){project_info}"
+    desc_info = f"\n  描述: {data['description']}" if data.get('description') else ""
+    labels_info = f"\n  标签: {data['labels']}" if data.get('labels') else ""
+    assignee_info = f"\n  负责人: {data['assignee']}" if data.get('assignee') else ""
+    milestone_info = f"\n  里程碑: #{data['milestone_id']}" if data.get('milestone_id') else ""
+    return f"Issue #{data['id']} created: [{data['priority']}] {data['title']} (status={data['status']}, source={data['source']}){project_info}{desc_info}{labels_info}{assignee_info}{milestone_info}\n  created_at={data.get('created_at','?')}"
 
 
 @mcp.tool()
@@ -238,7 +325,7 @@ async def list_issues(
     deferred_only: bool = False,
     limit: int = 20,
 ) -> str:
-    """查询 issues 列表"""
+    """查询 issues 列表（含描述、时间、负责人、里程碑等完整信息）"""
     params = {"limit": limit}
     if project_id:
         params["project_id"] = project_id
@@ -262,7 +349,18 @@ async def list_issues(
         return "No issues found."
     lines = [f"Total: {data['total']} issues"]
     for item in items:
-        lines.append(f"  #{item['id']} [{item['priority']}] {item['title']} ({item['status']}, source={item['source']})")
+        desc_preview = ""
+        if item.get("description"):
+            d = item["description"]
+            desc_preview = f"\n    描述: {d[:80]}..." if len(d) > 80 else f"\n    描述: {d}"
+        assignee_info = f"\n    负责人: {item['assignee']}" if item.get("assignee") else ""
+        deferred_info = ""
+        if item.get("deferred_to_milestone_id"):
+            deferred_info = f"\n    推迟到: milestone #{item['deferred_to_milestone_id']}"
+            if item.get("deferred_reason"):
+                deferred_info += f" ({item['deferred_reason']})"
+        time_info = f"\n    创建: {item.get('created_at','?')} | 更新: {item.get('updated_at','?')}"
+        lines.append(f"  #{item['id']} [{item['priority']}] {item['title']} ({item['status']}, source={item['source']}, type={item.get('issue_type','?')}){desc_preview}{assignee_info}{deferred_info}{time_info}")
     return "\n".join(lines)
 
 
@@ -273,7 +371,7 @@ async def update_issue_status(issue_id: int, status: str) -> str:
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     data = resp.json()
-    return f"Issue #{data['id']} status updated to {data['status']}"
+    return f"Issue #{data['id']} status updated to {data['status']}\n  标题: {data['title']} | 优先级: {data['priority']} | updated_at={data.get('updated_at','?')}"
 
 
 @mcp.tool()
@@ -283,7 +381,7 @@ async def update_issue_priority(issue_id: int, priority: str) -> str:
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     data = resp.json()
-    return f"Issue #{data['id']} priority updated to {data['priority']}"
+    return f"Issue #{data['id']} priority updated to {data['priority']}\n  标题: {data['title']} | 状态: {data['status']} | updated_at={data.get('updated_at','?')}"
 
 
 @mcp.tool()
@@ -326,12 +424,14 @@ async def propose_plan(title: str, description: str = "", project_id: Optional[i
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     data = resp.json()
-    return f"Plan #{data['id']} proposed: {data['title']} (status={data['status']}, waiting for approval)"
+    desc_info = f"\n  描述: {data['description']}" if data.get('description') else ""
+    project_info = f"\n  project_id={data['project_id']}" if data.get('project_id') else ""
+    return f"Plan #{data['id']} proposed: {data['title']} (status={data['status']}, waiting for approval){desc_info}{project_info}\n  created_at={data.get('created_at','?')}"
 
 
 @mcp.tool()
 async def list_plans(status: Optional[str] = None, project_id: Optional[int] = None) -> str:
-    """查询计划列表"""
+    """查询计划列表（含描述、审批信息、拒绝原因、进度统计）"""
     params = {}
     if status:
         params["status"] = status
@@ -345,14 +445,37 @@ async def list_plans(status: Optional[str] = None, project_id: Optional[int] = N
         return "No plans found."
     lines = [f"Total: {len(items)} plans"]
     for item in items:
-        lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (proposed_by={item['proposed_by']})")
+        desc_preview = ""
+        if item.get("description"):
+            d = item["description"]
+            desc_preview = f"\n    描述: {d[:100]}..." if len(d) > 100 else f"\n    描述: {d}"
+        progress = ""
+        if item.get("item_count") is not None:
+            progress = f"\n    进度: {item.get('item_done_count',0)}/{item['item_count']} items done"
+        approval = ""
+        if item.get("approved_by"):
+            approval = f"\n    审批: by {item['approved_by']} at {item.get('approved_at','?')}"
+        reject = ""
+        if item.get("reject_reason"):
+            reject = f"\n    拒绝原因: {item['reject_reason']}"
+        lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (proposed_by={item['proposed_by']}){desc_preview}{progress}{approval}{reject}")
     return "\n".join(lines)
 
 
 @mcp.tool()
 async def update_plan_progress(plan_id: int, item_title: str, status: str = "done") -> str:
-    """更新计划项进度。如果 plan_item 不存在则自动创建。"""
+    """更新计划项进度。如果 plan_item 不存在则自动创建。仅 approved(active) 状态的 Plan 才能更新进度。"""
     agent_name = _current_sub()
+
+    # 检查 Plan 状态
+    plan_resp = await _api_request("GET", f"{API_BASE}/plans/{plan_id}")
+    if plan_resp.status_code >= 400:
+        return f"Error: Plan #{plan_id} not found ({plan_resp.status_code})"
+    plan_data = plan_resp.json()
+    plan_status = plan_data.get("status", "")
+    if plan_status not in ("active", "completed"):
+        return f"Error: Plan #{plan_id} 状态为 '{plan_status}'，无法更新进度。只有 approved(active) 或 completed 状态的 Plan 才能更新进度。"
+
     resp = await _api_request("GET", f"{API_BASE}/plans/{plan_id}/items")
     if resp.status_code >= 400:
         return f"Error getting plan items: {resp.status_code}"

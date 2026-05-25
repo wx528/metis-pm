@@ -21,6 +21,8 @@ def _recipient_filter(user: dict):
         return or_(Notification.recipient == user["sub"], Notification.recipient == "ai_agent")
     if user.get("role") == "mate":
         return or_(Notification.recipient == user["sub"], Notification.recipient == "admin")
+    if user.get("role") == "tester":
+        return Notification.recipient == user["sub"]
     return Notification.recipient == user["sub"]
 
 

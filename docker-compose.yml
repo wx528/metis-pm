@@ -72,6 +72,30 @@ services:
         max-size: "5m"
         max-file: "3"
 
+  mcp-tester:
+    build: ./backend
+    container_name: pm-mcp-tester
+    ports:
+      - "${MCP_TESTER_PORT:-9002}:9002"
+    env_file:
+      - .env
+    environment:
+      - PM_API_URL=http://backend:8000/api/v1
+      - MCP_TRANSPORT=streamable-http
+      - MCP_PORT=9002
+      - MCP_HOST=0.0.0.0
+      - PM_AGENT_PASSWORD=${TESTER_PASSWORD:-CHANGE-ME}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: ["python", "mcp_server_tester.py"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
   frontend:
     build:
       context: ./frontend

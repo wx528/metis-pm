@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.17.0] - 2026-05-25
+
+### 新增：测试者（Tester）角色
+
+新增第三种 Agent 角色——测试者，模拟内测客户提交 Bug/需求、验证修复、退回不合格修复，与程序员（agent）和大副（mate）形成完整工作流闭环。
+
+#### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/mcp_server_tester.py` | 测试者 MCP Server，端口 9002，Streamable HTTP 模式 |
+| `docs/user-feedback/prompt/tester.md` | 测试者体验测试提示词 |
+
+#### 测试者工具集
+
+| 工具 | 说明 |
+|------|------|
+| `check_connection` | 测试连接，显示 tester 身份 |
+| `get_context` | 测试者视角概览：我的 Issue 统计、待验证 Issue、项目告警 |
+| `report_bug` | 提交 Bug 报告（source 自动标记 user，默认 P1） |
+| `request_feature` | 提交功能需求（source 自动标记 user，默认 P2） |
+| `verify_issue` | 验证修复通过：review → closed（仅自己提交的 Issue） |
+| `reject_fix` | 退回修复：review → in_progress（必填退回原因） |
+| `list_my_issues` | 查看我提交的 Issue 列表 |
+| `list_all_issues` | 查看项目所有 Issue（只读） |
+| `get_issue_detail` | Issue 完整详情（含评论） |
+| `add_comment` | 添加测试评论（自动标记 testing 类型） |
+| `check_notifications` | 查看通知 |
+| `mark_notification_read` | 标记通知已读 |
+| `list_projects` | 列出项目（只读） |
+| `list_milestones` | 列出里程碑（只读） |
+
+#### 权限控制
+
+| 操作 | agent | mate | tester |
+|------|-------|------|--------|
+| 创建 Issue | ✅ (source=ai_agent) | ❌ | ✅ (source=user) |
+| 创建 Plan | ✅ | ❌ | ❌ |
+| 审批 Plan | ❌ | ✅ | ❌ |
+| 修改 Issue | ✅(任意字段) | ✅(任意字段) | ✅(仅自己提交的，仅状态) |
+| 关闭 Issue | ✅ | ✅ | ✅(仅自己提交的) |
+| 退回 Issue | ✅ | ✅ | ✅(仅自己提交的) |
+
+#### 通知增强
+
+- Tester 创建 Issue 时通知 admin 和所有 mate
+- Issue 进入 review 状态时通知 tester 创建者（等待验证）
+- `_recipient_filter` 新增 tester 分支
+
+#### 配置变更
+
+- `.env` / `.env.example`：新增 `qa-tester:CHANGE-ME:tester`、`MCP_TESTER_PORT=9002`、`TESTER_PASSWORD`
+- `docker-compose.yml`：新增 `mcp-tester` 容器
+
 ## [0.16.0] - 2026-05-25
 
 ### Bug 修复 + 功能增强（基于 Kimi 大副体验报告 04.kimi.FirstMate）

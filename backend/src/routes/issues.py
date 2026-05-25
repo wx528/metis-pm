@@ -81,8 +81,12 @@ async def list_issues(
 
 
 @router.post("", response_model=IssueRead, status_code=201)
-async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent"))):
+async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent", "tester"))):
     issue = Issue(**data.model_dump())
+    if user["role"] == "tester":
+        issue.source = IssueSource.USER
+        if not issue.created_by:
+            issue.created_by = user["sub"]
     db.add(issue)
     await db.commit()
     await db.refresh(issue)
@@ -107,8 +111,26 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
             project_id=issue.project_id,
         )
 
+    # 如果 Tester 创建了 Issue，通知 admin 和所有 mate
+    if user["role"] == "tester":
+        from src.settings import settings
+        recipients = ["admin"]
+        for name, (pwd, role) in settings.agent_password_map.items():
+            if role == "mate":
+                recipients.append(name)
+        for recip in recipients:
+            await create_notification(
+                db, recipient=recip,
+                type=NotificationType.TASK_CREATED,
+                title=f"Tester {user['sub']} 提交了 {issue.priority} Issue",
+                body=issue.title,
+                entity_type="issue", entity_id=issue.id,
+                created_by=user["sub"],
+                project_id=issue.project_id,
+            )
+
     # 给创建者发确认通知
-    if user["role"] == "agent":
+    if user["role"] in ("agent", "tester"):
         await create_notification(
             db, recipient=user["sub"],
             type=NotificationType.INFO,
@@ -151,6 +173,18 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
     issue = result.scalar_one_or_none()
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
+
+    # tester 只能修改自己创建的 Issue，且只能改状态（关闭/退回）
+    if user["role"] == "tester":
+        if issue.created_by != user["sub"]:
+            raise HTTPException(status_code=403, detail="Tester 只能修改自己提交的 Issue")
+        update_data = data.model_dump(exclude_unset=True)
+        allowed_status_changes = {"closed", "in_progress"}
+        if "status" in update_data and update_data["status"] not in allowed_status_changes:
+            raise HTTPException(status_code=403, detail="Tester 只能将 Issue 关闭(closed)或退回(in_progress)")
+        non_status_keys = [k for k in update_data if k != "status"]
+        if non_status_keys:
+            raise HTTPException(status_code=403, detail=f"Tester 只能修改状态，不能修改: {', '.join(non_status_keys)}")
 
     old_values = {
         k: getattr(issue, k)
@@ -196,6 +230,25 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
             created_by=user["sub"],
             project_id=issue.project_id,
         )
+
+    # Issue 进入 review 状态时通知创建者（如果是 tester 创建的）
+    if update_data.get("status") == IssueStatus.REVIEW and issue.created_by:
+        from src.settings import settings
+        creator_role = "agent"
+        for name, (pwd, role) in settings.agent_password_map.items():
+            if name == issue.created_by:
+                creator_role = role
+                break
+        if creator_role == "tester":
+            await create_notification(
+                db, recipient=issue.created_by,
+                type=NotificationType.INFO,
+                title=f"Issue #{issue.id} 等待验证",
+                body=f"[{issue.priority}] {issue.title}",
+                entity_type="issue", entity_id=issue.id,
+                created_by=user["sub"],
+                project_id=issue.project_id,
+            )
 
     return issue
 

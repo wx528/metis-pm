@@ -73,9 +73,9 @@ async def get_context() -> str:
 
     lines = ["=== 项目全局概览 ==="]
 
-    issues = dash.get("issue_stats", {})
-    plans = dash.get("plan_stats", {})
-    servers = dash.get("server_stats", {})
+    issues = dash.get("issues", {})
+    plans = dash.get("plans", {})
+    servers = dash.get("servers", {})
     lines.append(f"Issues: {issues.get('total',0)} total | P0: {issues.get('p0',0)} | P1: {issues.get('p1',0)} | Open: {issues.get('open',0)} | In Progress: {issues.get('in_progress',0)} | Deferred: {issues.get('deferred',0)} | AI Agent: {issues.get('ai_agent',0)}")
     lines.append(f"Plans: {plans.get('total',0)} total | Pending Approval: {plans.get('pending_approval',0)} | Active: {plans.get('active',0)} | Abandoned: {plans.get('abandoned',0)}")
 
@@ -86,6 +86,9 @@ async def get_context() -> str:
         alerts.append(f"📋 {plans['pending_approval']} 个 Plan 等待审批")
     if servers.get("offline", 0) > 0:
         alerts.append(f"🔴 {servers['offline']} 台服务器离线")
+    unassigned_p0 = dash.get("unassigned_p0_issues", [])
+    if unassigned_p0:
+        alerts.append(f"🚨 {len(unassigned_p0)} 个 P0 Issue 无负责人！")
     if alerts:
         lines.append("")
         lines.append("=== 紧急告警 ===")
@@ -113,12 +116,19 @@ async def get_context() -> str:
         for ag in active_agents:
             lines.append(f"  {ag['name']} (最近操作: {ag.get('last_action','?')})")
 
+    agent_workload = dash.get("agent_workload", [])
+    if agent_workload:
+        lines.append("")
+        lines.append("=== Agent 工作负载 ===")
+        for w in agent_workload:
+            lines.append(f"  {w['assignee']}: {w['total']} issues ({w['in_progress']} in_progress, {w['open']} open)")
+
     unassigned_p0 = dash.get("unassigned_p0_issues", [])
     if unassigned_p0:
         lines.append("")
         lines.append("=== 无负责人 P0 Issue ===")
         for iss in unassigned_p0:
-            lines.append(f"  Issue #{iss['id']} {iss['title']}")
+            lines.append(f"  Issue #{iss['id']} {iss['title']} [{iss.get('status','?')}]")
 
     return "\n".join(lines)
 
@@ -185,6 +195,29 @@ async def approve_plan(plan_id: int) -> str:
 
 
 @mcp.tool()
+async def list_active_plans_progress() -> str:
+    """查看所有活跃 Plan 的进度概览（完成百分比、待办项数），快速掌握执行情况。"""
+    resp = await _api_request("GET", f"{API_BASE}/plans", params={"status": "active", "limit": 50})
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    plans = resp.json()
+    if not plans:
+        return "No active plans."
+    lines = [f"Active plans: {len(plans)}"]
+    for p in plans:
+        items_resp = await _api_request("GET", f"{API_BASE}/plans/{p['id']}/items")
+        if items_resp.status_code < 400:
+            items = items_resp.json()
+            total = len(items)
+            done = sum(1 for i in items if i.get("status") == "done")
+            pct = f"{done * 100 // total}%" if total > 0 else "N/A"
+            lines.append(f"  Plan #{p['id']} {p['title']}: {done}/{total} done ({pct})")
+        else:
+            lines.append(f"  Plan #{p['id']} {p['title']}: (无法获取进度)")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def reject_plan(plan_id: int, reason: str = "") -> str:
     """拒绝 Plan，必须填写拒绝原因。提议 Agent 会收到通知和拒绝原因。"""
     if not reason:
@@ -203,12 +236,13 @@ async def list_issues(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     assignee: Optional[str] = None,
+    unassigned: bool = False,
     created_by: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
     sort_by: str = "created_at_desc",
 ) -> str:
-    """查询 Issue 列表。支持按状态/优先级/负责人/创建者筛选。sort_by: created_at_desc/asc, updated_at_desc/asc, priority_asc/desc。"""
+    """查询 Issue 列表。支持按状态/优先级/负责人/创建者筛选。unassigned=True 筛选无负责人 Issue。sort_by: created_at_desc/asc, updated_at_desc/asc, priority_asc/desc。"""
     params = {"limit": limit, "skip": offset, "sort_by": sort_by}
     if status:
         params["status"] = status
@@ -216,6 +250,8 @@ async def list_issues(
         params["priority"] = priority
     if assignee:
         params["assignee"] = assignee
+    if unassigned:
+        params["unassigned"] = "true"
     if created_by:
         params["created_by"] = created_by
 
@@ -273,13 +309,17 @@ async def get_issue_detail(issue_id: int) -> str:
 
 
 @mcp.tool()
-async def assign_issue(issue_id: int, assignee: str) -> str:
-    """分配 Issue 给指定 Agent。例如 assign_issue(7, 'hermes-agent')"""
-    resp = await _api_request("PUT", f"{API_BASE}/issues/{issue_id}", json={"assignee": assignee})
+async def assign_issue(issue_id: int, assignee: str, auto_start: bool = True) -> str:
+    """分配 Issue 给指定 Agent。auto_start=True 时自动将状态设为 in_progress（默认开启）。"""
+    payload = {"assignee": assignee}
+    if auto_start:
+        payload["status"] = "in_progress"
+    resp = await _api_request("PUT", f"{API_BASE}/issues/{issue_id}", json=payload)
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     d = resp.json()
-    return f"Issue #{d['id']} assigned to {assignee}\n  标题: {d['title']} | 状态: {d['status']} | 优先级: {d['priority']} | 负责人: {d.get('assignee') or '未分配'}"
+    status_note = " → in_progress" if auto_start else ""
+    return f"Issue #{d['id']} assigned to {assignee}{status_note}\n  标题: {d['title']} | 状态: {d['status']} | 优先级: {d['priority']} | 负责人: {d.get('assignee') or '未分配'}"
 
 
 @mcp.tool()
@@ -304,13 +344,13 @@ async def update_issue_status(issue_id: int, status: str) -> str:
 
 @mcp.tool()
 async def add_issue_comment(issue_id: int, content: str) -> str:
-    """给 Issue 添加管理评论（如审批意见、指导说明）"""
+    """给 Issue 添加管理评论（如审批意见、指导说明），评论自动标记为 management 类型"""
     agent_name = await _current_sub()
-    resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json={"content": content, "author": agent_name})
+    resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json={"content": content, "author": agent_name, "comment_type": "management"})
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     data = resp.json()
-    return f"Comment #{data['id']} added to Issue #{issue_id} by {agent_name}"
+    return f"Comment #{data['id']} added to Issue #{issue_id} by {agent_name} (management)"
 
 
 # ── 通知 ────────────────────────────────────────────

@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.16.0] - 2026-05-25
+
+### Bug 修复 + 功能增强（基于 Kimi 大副体验报告 04.kimi.FirstMate）
+
+基于 Kimi 作为大副角色的体验测试报告，修复 3 个 P0 级 Bug，完成 4 个 P1 级增强和 2 个 P2 级改进。
+
+#### P0 Bug 修复
+
+| Bug | 根因 | 修复 |
+|-----|------|------|
+| get_context 统计全部为 0 | 大副 MCP 用了错误字段名 `issue_stats`/`plan_stats`，Dashboard API 返回的是 `issues`/`plans` | 修正字段名映射 |
+| 里程碑 deferred 统计为 0 | `deferred_to_milestone_id` 关联的 Issue 只统计了总数，未按状态细分；`open_issues` 未包含 deferred 来源的 open Issue | 扩展 deferred 统计查询，合并两类来源的 open/closed 计数 |
+| 通知始终为空 | Plan 创建/重新提交时通知只发给 `admin`，从未发给 `mate` 角色；`_recipient_filter` 不识别 mate | 通知同时发给 admin 和所有 mate 角色；`_recipient_filter` 增加 mate 分支 |
+
+#### P1 功能增强
+
+| 功能 | 说明 |
+|------|------|
+| assign_issue 合并状态更新 | `assign_issue` 新增 `auto_start` 参数（默认 True），分配时自动设为 in_progress |
+| Agent 工作负载视图 | Dashboard API 新增 `agent_workload` 字段，MCP `get_context` 展示每个 Agent 的 in_progress/open Issue 数 |
+| 无负责人 P0 告警 | Dashboard API 新增 `unassigned_p0_issues` 字段，`get_context` 紧急告警区展示无负责人 P0 Issue |
+| 大副查看 Plan 进度 | 新增 `list_active_plans_progress` 工具，展示所有活跃 Plan 的完成百分比 |
+
+#### P2 改进
+
+| 改进 | 说明 |
+|------|------|
+| list_issues 支持 unassigned 筛选 | 后端 API 新增 `unassigned` 参数，工人/大副 MCP 的 `list_issues` 均支持 |
+| 评论类型区分 | Comment 模型新增 `comment_type` 字段（normal/management），大副评论自动标记为 management |
+
+#### Dashboard API 新增字段
+
+```json
+{
+  "agent_workload": [
+    {"assignee": "hermes-agent", "total": 5, "in_progress": 3, "open": 1}
+  ],
+  "unassigned_p0_issues": [
+    {"id": 1, "title": "紧急 Bug", "status": "open"}
+  ]
+}
+```
+
 ## [0.15.0] - 2026-05-25
 
 ### 大副 (First Mate) MCP Server — 多 Agent 架构 + RBAC 权限隔离

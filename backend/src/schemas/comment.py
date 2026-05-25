@@ -7,6 +7,7 @@ class CommentCreate(BaseModel):
     content: str = Field(..., min_length=1)
     author: str = Field(default="user", max_length=100)
     parent_id: Optional[int] = None
+    comment_type: str = Field(default="normal", max_length=20)
 
 
 class CommentRead(BaseModel):
@@ -15,6 +16,7 @@ class CommentRead(BaseModel):
     author: Optional[str] = None
     content: str
     parent_id: Optional[int] = None
+    comment_type: str = "normal"
     created_at: Optional[datetime] = None
 
     class Config:

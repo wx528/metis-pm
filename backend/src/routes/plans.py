@@ -81,17 +81,23 @@ async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user
         project_id=plan.project_id,
     )
 
-    # Plan pending_approval → 通知 admin 审批
+    # Plan pending_approval → 通知 admin 和所有 mate 审批
     if plan.status == PlanStatus.PENDING_APPROVAL:
-        await create_notification(
-            db, recipient="admin",
-            type=NotificationType.APPROVAL_NEEDED,
-            title=f"Plan #{plan.id} 等待审批",
-            body=plan.title,
-            entity_type="plan", entity_id=plan.id,
-            created_by=user["sub"],
-            project_id=plan.project_id,
-        )
+        from src.settings import settings
+        notification_recipients = ["admin"]
+        for name, (pwd, role) in settings.agent_password_map.items():
+            if role == "mate":
+                notification_recipients.append(name)
+        for recip in notification_recipients:
+            await create_notification(
+                db, recipient=recip,
+                type=NotificationType.APPROVAL_NEEDED,
+                title=f"Plan #{plan.id} 等待审批",
+                body=plan.title,
+                entity_type="plan", entity_id=plan.id,
+                created_by=user["sub"],
+                project_id=plan.project_id,
+            )
 
         # 给提议者发确认通知
         proposer = plan.proposed_by_name or plan.proposed_by
@@ -152,17 +158,23 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
         project_id=plan.project_id,
     )
 
-    # 重新提交审批时通知 admin
+    # 重新提交审批时通知 admin 和所有 mate
     if update_data.get("status") == PlanStatus.PENDING_APPROVAL and old_values.get("status") == PlanStatus.ABANDONED:
-        await create_notification(
-            db, recipient="admin",
-            type=NotificationType.APPROVAL_NEEDED,
-            title=f"Plan #{plan.id} 重新提交审批",
-            body=plan.title,
-            entity_type="plan", entity_id=plan.id,
-            created_by=user["sub"],
-            project_id=plan.project_id,
-        )
+        from src.settings import settings
+        notification_recipients = ["admin"]
+        for name, (pwd, role) in settings.agent_password_map.items():
+            if role == "mate":
+                notification_recipients.append(name)
+        for recip in notification_recipients:
+            await create_notification(
+                db, recipient=recip,
+                type=NotificationType.APPROVAL_NEEDED,
+                title=f"Plan #{plan.id} 重新提交审批",
+                body=plan.title,
+                entity_type="plan", entity_id=plan.id,
+                created_by=user["sub"],
+                project_id=plan.project_id,
+            )
 
     return plan
 

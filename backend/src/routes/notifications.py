@@ -19,6 +19,8 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 def _recipient_filter(user: dict):
     if user.get("role") == "agent":
         return or_(Notification.recipient == user["sub"], Notification.recipient == "ai_agent")
+    if user.get("role") == "mate":
+        return or_(Notification.recipient == user["sub"], Notification.recipient == "admin")
     return Notification.recipient == user["sub"]
 
 

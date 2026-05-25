@@ -92,6 +92,9 @@ async def get_context(project_id: Optional[int] = None) -> str:
         alerts.append(f"📋 {plans['pending_approval']} 个 Plan 等待审批")
     if servers.get("offline", 0) > 0:
         alerts.append(f"🔴 {servers['offline']} 台服务器离线")
+    unassigned_p0 = dash.get("unassigned_p0_issues", [])
+    if unassigned_p0:
+        alerts.append(f"🚨 {len(unassigned_p0)} 个 P0 Issue 无负责人！")
     if alerts:
         lines.append("")
         lines.append("=== 紧急告警 ===")
@@ -126,40 +129,20 @@ async def get_context(project_id: Optional[int] = None) -> str:
         for i in recent_issues[:5]:
             lines.append(f"  Issue #{i['id']} [{i['priority']}] {i['title']} ({i['status']}, source={i['source']})")
 
-    # 5.5 活跃 Agent & 无负责人 P0
-    try:
-        activity_resp = await _api_request("GET", f"{API_BASE}/activity-logs", params={"limit": 50})
-        if activity_resp.status_code < 400:
-            activities = activity_resp.json()
-            from datetime import datetime as dt, timezone
-            one_hour_ago = dt.now(timezone.utc).timestamp() - 3600
-            active_agents = set()
-            for a in activities:
-                created = a.get("created_at", "")
-                if created:
-                    try:
-                        ts = dt.fromisoformat(created).timestamp()
-                        if ts >= one_hour_ago:
-                            active_agents.add(a.get("actor", "?"))
-                    except (ValueError, TypeError):
-                        pass
-            if active_agents:
-                lines.append("")
-                lines.append(f"=== 活跃 Agent (1h) ===")
-                for ag in sorted(active_agents):
-                    lines.append(f"  {ag}")
-    except Exception:
-        pass
+    # 5.5 Agent 工作负载 & 无负责人 P0
+    agent_workload = dash.get("agent_workload", [])
+    if agent_workload:
+        lines.append("")
+        lines.append("=== Agent 工作负载 ===")
+        for w in agent_workload:
+            lines.append(f"  {w['assignee']}: {w['total']} issues ({w['in_progress']} in_progress, {w['open']} open)")
 
-    p0_resp = await _api_request("GET", f"{API_BASE}/issues", params={"priority": "P0", "status": "open", "limit": 10})
-    if p0_resp.status_code < 400:
-        p0_data = p0_resp.json()
-        unassigned = [i for i in p0_data.get("items", p0_data if isinstance(p0_data, list) else []) if not i.get("assignee")]
-        if unassigned:
-            lines.append("")
-            lines.append("=== 无负责人 P0 Issue ===")
-            for i in unassigned[:5]:
-                lines.append(f"  Issue #{i['id']} {i['title']}")
+    unassigned_p0 = dash.get("unassigned_p0_issues", [])
+    if unassigned_p0:
+        lines.append("")
+        lines.append("=== 无负责人 P0 Issue ===")
+        for i in unassigned_p0[:5]:
+            lines.append(f"  Issue #{i['id']} {i['title']} [{i.get('status','?')}]")
 
     # 6. 我的状态
     lines.append("")
@@ -306,6 +289,8 @@ async def list_issues(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     source: Optional[str] = None,
+    assignee: Optional[str] = None,
+    unassigned: bool = False,
     created_by: Optional[str] = None,
     milestone_id: Optional[int] = None,
     deferred_only: bool = False,
@@ -313,7 +298,7 @@ async def list_issues(
     offset: int = 0,
     sort_by: str = "created_at_desc",
 ) -> str:
-    """查询 issues 列表（含描述、时间、负责人、里程碑等完整信息）。sort_by 可选: created_at_desc/created_at_asc/updated_at_desc/updated_at_asc/priority_asc/priority_desc。created_by 按创建者筛选（如 hermes-agent）。offset 分页偏移量，默认 0。"""
+    """查询 issues 列表（含描述、时间、负责人、里程碑等完整信息）。unassigned=True 筛选无负责人 Issue。sort_by 可选: created_at_desc/created_at_asc/updated_at_desc/updated_at_asc/priority_asc/priority_desc。created_by 按创建者筛选（如 hermes-agent）。offset 分页偏移量，默认 0。"""
     params = {"limit": limit, "skip": offset, "sort_by": sort_by}
     if project_id:
         params["project_id"] = project_id
@@ -323,6 +308,10 @@ async def list_issues(
         params["priority"] = priority
     if source:
         params["source"] = source
+    if assignee:
+        params["assignee"] = assignee
+    if unassigned:
+        params["unassigned"] = "true"
     if created_by:
         params["created_by"] = created_by
     if milestone_id:

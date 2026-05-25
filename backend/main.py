@@ -179,6 +179,12 @@ async def _run_migrations(conn):
             logger.info("Added parent_id column to comments")
         except Exception as e:
             logger.warning(f"Failed to add parent_id to comments: {e}")
+    if "comment_type" not in comments_cols:
+        try:
+            await conn.execute(text("ALTER TABLE comments ADD COLUMN comment_type VARCHAR(20) DEFAULT 'normal'"))
+            logger.info("Added comment_type column to comments")
+        except Exception as e:
+            logger.warning(f"Failed to add comment_type to comments: {e}")
 
 
 @asynccontextmanager

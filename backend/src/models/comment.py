@@ -5,6 +5,11 @@ from sqlalchemy.orm import relationship
 from src.core.database import Base
 
 
+class CommentType:
+    NORMAL = "normal"
+    MANAGEMENT = "management"
+
+
 class Comment(Base):
     __tablename__ = "comments"
 
@@ -13,6 +18,7 @@ class Comment(Base):
     parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True)
     author = Column(String(100), nullable=True)
     content = Column(Text, nullable=False)
+    comment_type = Column(String(20), default=CommentType.NORMAL)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     issue = relationship("Issue", back_populates="comments")

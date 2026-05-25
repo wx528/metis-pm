@@ -28,6 +28,7 @@ async def list_issues(
     priority: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     assignee: Optional[str] = Query(None),
+    unassigned: bool = Query(False),
     created_by: Optional[str] = Query(None),
     milestone_id: Optional[int] = Query(None),
     deferred_only: bool = Query(False),
@@ -48,6 +49,8 @@ async def list_issues(
         query = query.where(Issue.source == source)
     if assignee:
         query = query.where(Issue.assignee == assignee)
+    if unassigned:
+        query = query.where((Issue.assignee.is_(None)) | (Issue.assignee == ""))
     if created_by:
         query = query.where(Issue.created_by == created_by)
     if milestone_id:

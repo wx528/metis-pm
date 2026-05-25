@@ -79,6 +79,32 @@ async def get_dashboard(
     recent_issues_result = await db.execute(recent_issues_query)
     recent_issues = recent_issues_result.scalars().all()
 
+    # Agent 工作负载：每个 assignee 的 in_progress / open Issue 数
+    workload_query = select(
+        Issue.assignee,
+        func.count(Issue.id).label("total"),
+        func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
+        func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+    ).where(Issue.assignee.isnot(None), Issue.assignee != "").group_by(Issue.assignee)
+    if project_id:
+        workload_query = workload_query.where(Issue.project_id == project_id)
+    workload_result = await db.execute(workload_query)
+    agent_workload = [
+        {"assignee": row.assignee, "total": row.total or 0, "in_progress": row.in_progress or 0, "open": row.open or 0}
+        for row in workload_result.all()
+    ]
+
+    # 无负责人 P0 Issue
+    unassigned_p0_query = select(Issue).where(
+        Issue.priority == IssuePriority.P0,
+        (Issue.assignee.is_(None) | (Issue.assignee == "")),
+        Issue.status.in_([IssueStatus.OPEN, IssueStatus.IN_PROGRESS]),
+    )
+    if project_id:
+        unassigned_p0_query = unassigned_p0_query.where(Issue.project_id == project_id)
+    unassigned_p0_result = await db.execute(unassigned_p0_query)
+    unassigned_p0_issues = unassigned_p0_result.scalars().all()
+
     return {
         "issues": {
             "total": issues_row.total or 0,
@@ -131,5 +157,10 @@ async def get_dashboard(
                 "created_at": i.created_at.isoformat(),
             }
             for i in recent_issues
+        ],
+        "agent_workload": agent_workload,
+        "unassigned_p0_issues": [
+            {"id": i.id, "title": i.title, "status": i.status}
+            for i in unassigned_p0_issues
         ],
     }

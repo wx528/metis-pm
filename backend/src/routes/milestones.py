@@ -37,6 +37,7 @@ async def list_milestones(
             select(
                 func.count(Issue.id).label("total"),
                 func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+                func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
                 func.sum(case((Issue.status == IssueStatus.CLOSED, 1), else_=0)).label("closed"),
                 func.sum(case((Issue.status == IssueStatus.DEFERRED, 1), else_=0)).label("deferred"),
             ).where(Issue.milestone_id == m.id)
@@ -46,7 +47,10 @@ async def list_milestones(
         deferred_stats = await db.execute(
             select(
                 func.count(Issue.id).label("total"),
-            ).where(Issue.deferred_to_milestone_id == m.id, Issue.status == IssueStatus.DEFERRED)
+                func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+                func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
+                func.sum(case((Issue.status == IssueStatus.CLOSED, 1), else_=0)).label("closed"),
+            ).where(Issue.deferred_to_milestone_id == m.id)
         )
         deferred = deferred_stats.one()
 
@@ -62,8 +66,8 @@ async def list_milestones(
             created_at=m.created_at,
             updated_at=m.updated_at,
             total_issues=total,
-            open_issues=direct.open or 0,
-            closed_issues=direct.closed or 0,
+            open_issues=(direct.open or 0) + (deferred.open or 0),
+            closed_issues=(direct.closed or 0) + (deferred.closed or 0),
             deferred_issues=(direct.deferred or 0) + (deferred.total or 0),
         ))
     return out

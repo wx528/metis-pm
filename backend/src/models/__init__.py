@@ -13,6 +13,7 @@ from src.models.workflow import (
     WorkflowTrigger, WorkflowStatus, StepType, OnFailure, WorkflowRunStatus,
 )
 from src.models.agent_memory import AgentMemory
+from src.models.project_registration import ProjectRegistration, RegistrationStatus
 
 __all__ = [
     "Base",
@@ -28,4 +29,5 @@ __all__ = [
     "Workflow", "WorkflowStep", "WorkflowRun",
     "WorkflowTrigger", "WorkflowStatus", "StepType", "OnFailure", "WorkflowRunStatus",
     "AgentMemory",
+    "ProjectRegistration", "RegistrationStatus",
 ]

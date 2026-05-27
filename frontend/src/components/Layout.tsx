@@ -21,6 +21,7 @@ import {
   PlusOutlined,
   RightOutlined,
   DownOutlined,
+  FolderOpenOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useProject } from "../hooks/useProject";
@@ -156,11 +157,13 @@ export default function Layout() {
     { key: `${basePath}/servers`, icon: <CloudServerOutlined />, label: "Servers" },
     { key: `${basePath}/workflows`, icon: <ThunderboltOutlined />, label: "工作流" },
     { key: `/projects`, icon: <FolderOutlined />, label: "项目管理" },
+    { key: `/project-registrations`, icon: <FolderOpenOutlined />, label: "项目登记" },
   ];
 
   const selectedKey =
     menuItems.find((item) => {
       if (item.key === "/projects") return location.pathname === "/projects";
+      if (item.key === "/project-registrations") return location.pathname === "/project-registrations";
       return location.pathname.startsWith(item.key);
     })?.key || basePath || "/";
 

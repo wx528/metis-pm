@@ -98,6 +98,30 @@ services:
         max-size: "5m"
         max-file: "3"
 
+  mcp-registrar:
+    build: ./backend
+    container_name: pm-mcp-registrar
+    ports:
+      - "${MCP_REGISTRAR_PORT:-9003}:9003"
+    env_file:
+      - .env
+    environment:
+      - PM_API_URL=http://backend:8000/api/v1
+      - MCP_TRANSPORT=streamable-http
+      - MCP_PORT=9003
+      - MCP_HOST=0.0.0.0
+      - PM_AGENT_PASSWORD=${REGISTRAR_PASSWORD:-CHANGE-ME}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    entrypoint: ["python", "mcp_server_registrar.py"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
   frontend:
     build:
       context: ./frontend

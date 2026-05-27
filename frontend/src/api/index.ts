@@ -7,3 +7,4 @@ export * from "./activity_logs";
 export * from "./dashboard";
 export * from "./projects";
 export * from "./notifications";
+export * from "./projectRegistrations";

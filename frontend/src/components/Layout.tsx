@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Layout as AntLayout, Menu, Button, Tag, Dropdown, Badge, Drawer, List, Space, Typography } from "antd";
+import { useState, useEffect } from "react";
+import { Layout as AntLayout, Menu, Button, Tag, Dropdown, Badge, Drawer, List, Space, Typography, Modal, Form, Input, Progress } from "antd";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   DashboardOutlined,
@@ -13,8 +13,14 @@ import {
   CheckOutlined,
   SwapOutlined,
   AppstoreOutlined,
-
+  FolderOutlined,
   ThunderboltOutlined,
+  SettingOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  RightOutlined,
+  DownOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useProject } from "../hooks/useProject";
@@ -22,6 +28,16 @@ import { useNotifications } from "../hooks/useNotifications";
 import type { MenuProps } from "antd";
 
 const { Header, Sider, Content, Footer } = AntLayout;
+const { Text } = Typography;
+
+interface GlobalResource {
+  id: string;
+  category: string;
+  name: string;
+  current: number;
+  total: number;
+  unit: string;
+}
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -30,6 +46,104 @@ export default function Layout() {
   const { currentProject, projects, setCurrentProject } = useProject();
   const { unreadCount, notifications, refreshNotifications, markRead, markAllRead } = useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
+
+  // 全局资源管理
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [resourceModalOpen, setResourceModalOpen] = useState(false);
+  const [editingResource, setEditingResource] = useState<GlobalResource | null>(null);
+  const [resources, setResources] = useState<GlobalResource[]>([]);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [resourceForm] = Form.useForm();
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("pm_global_resources");
+      if (saved) {
+        const parsed: GlobalResource[] = JSON.parse(saved);
+        const migrated = parsed.map((r) => ({ ...r, category: r.category || "其他" }));
+        setResources(migrated);
+        localStorage.setItem("pm_global_resources", JSON.stringify(migrated));
+        const cats: Record<string, boolean> = {};
+        migrated.forEach((r) => { cats[r.category] = true; });
+        setExpandedCategories(cats);
+      } else {
+        const defaults: GlobalResource[] = [
+          { id: "code-plan", category: "Code Plans", name: "Code Plan", current: 0, total: 1000, unit: "次/月" },
+          { id: "token-plan", category: "Token Plans", name: "Token Plan", current: 0, total: 1_000_000, unit: "tokens/月" },
+        ];
+        setResources(defaults);
+        localStorage.setItem("pm_global_resources", JSON.stringify(defaults));
+        setExpandedCategories({ "Code Plans": true, "Token Plans": true });
+      }
+    } catch {
+      setResources([]);
+    }
+  }, []);
+
+  const saveResources = (list: GlobalResource[]) => {
+    setResources(list);
+    localStorage.setItem("pm_global_resources", JSON.stringify(list));
+  };
+
+  const handleAddResource = (values: any) => {
+    const newResource: GlobalResource = {
+      id: values.id || Date.now().toString(),
+      category: values.category || "其他",
+      name: values.name,
+      current: Number(values.current) || 0,
+      total: Number(values.total) || 0,
+      unit: values.unit || "",
+    };
+    if (editingResource) {
+      saveResources(resources.map((r) => (r.id === editingResource.id ? newResource : r)));
+    } else {
+      const newList = [...resources, newResource];
+      saveResources(newList);
+      setExpandedCategories((prev) => ({ ...prev, [newResource.category]: true }));
+    }
+    setResourceModalOpen(false);
+    setEditingResource(null);
+    resourceForm.resetFields();
+  };
+
+  const handleDeleteResource = (id: string) => {
+    saveResources(resources.filter((r) => r.id !== id));
+  };
+
+  const openEditResource = (r: GlobalResource) => {
+    setEditingResource(r);
+    resourceForm.setFieldsValue({
+      id: r.id,
+      category: r.category,
+      name: r.name,
+      current: r.current,
+      total: r.total,
+      unit: r.unit,
+    });
+    setResourceModalOpen(true);
+  };
+
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  // 按类别分组 + 汇总
+  const groupedResources = resources.reduce<Record<string, GlobalResource[]>>((acc, r) => {
+    const cat = r.category || "其他";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(r);
+    return acc;
+  }, {});
+  const categories = Object.keys(groupedResources).sort();
+
+  const getCategorySummary = (cat: string) => {
+    const items = groupedResources[cat];
+    if (!items || items.length === 0) return { pct: 0, label: "" };
+    const sumCurrent = items.reduce((s, r) => s + r.current, 0);
+    const sumTotal = items.reduce((s, r) => s + r.total, 0);
+    const pct = sumTotal > 0 ? Math.round((sumCurrent / sumTotal) * 100) : 0;
+    return { pct, label: `${pct}%` };
+  };
 
   const basePath = currentProject ? `/projects/${currentProject.slug}` : "";
 
@@ -41,10 +155,14 @@ export default function Layout() {
     { key: `${basePath}/plans`, icon: <ProjectOutlined />, label: "Plans" },
     { key: `${basePath}/servers`, icon: <CloudServerOutlined />, label: "Servers" },
     { key: `${basePath}/workflows`, icon: <ThunderboltOutlined />, label: "工作流" },
+    { key: `/projects`, icon: <FolderOutlined />, label: "项目管理" },
   ];
 
-  // 确定当前选中的菜单项
-  const selectedKey = menuItems.find((item) => location.pathname.startsWith(item.key))?.key || basePath || "/";
+  const selectedKey =
+    menuItems.find((item) => {
+      if (item.key === "/projects") return location.pathname === "/projects";
+      return location.pathname.startsWith(item.key);
+    })?.key || basePath || "/";
 
   const projectMenuItems: MenuProps["items"] = projects.map((p) => ({
     key: p.slug,
@@ -78,7 +196,7 @@ export default function Layout() {
 
   return (
     <AntLayout style={{ minHeight: "100vh" }}>
-      <Sider theme="light" width={200}>
+      <Sider theme="light" width={220} style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
         {/* 项目切换器 */}
         <div style={{ padding: "12px 16px" }}>
           <Dropdown menu={{ items: projectMenuItems, onClick: handleProjectSwitch }} trigger={["click"]}>
@@ -90,13 +208,68 @@ export default function Layout() {
             </Button>
           </Dropdown>
         </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-        />
+
+        {/* 项目菜单 */}
+        <div style={{ flex: "1 1 auto", overflowY: "auto" }}>
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={menuItems}
+            onClick={({ key }) => navigate(key)}
+            style={{ border: "none" }}
+          />
+        </div>
+
+        {/* 底部：全局资源概览 - 固定不滚动 */}
+        <div style={{ flex: "0 0 auto", borderTop: "1px solid #f0f0f0" }}>
+          {/* 标题行 */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "10px 16px 6px",
+            }}
+          >
+            <Text type="secondary" style={{ fontSize: 12, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+              全局资源
+            </Text>
+            <Button type="link" size="small" style={{ fontSize: 12, padding: 0, height: "auto" }} onClick={() => setDrawerOpen(true)}>
+              管理
+            </Button>
+          </div>
+
+          {/* 每个类别一行汇总进度 */}
+          <div style={{ padding: "0 16px 12px" }}>
+            {categories.length === 0 && (
+              <Text type="secondary" style={{ fontSize: 11 }}>暂无资源</Text>
+            )}
+            {categories.map((cat) => {
+              const { pct } = getCategorySummary(cat);
+              return (
+                <div
+                  key={cat}
+                  style={{ marginBottom: 6, cursor: "pointer" }}
+                  onClick={() => setDrawerOpen(true)}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                    <Text style={{ fontSize: 12 }}>{cat}</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>{pct}%</Text>
+                  </div>
+                  <Progress
+                    percent={pct}
+                    showInfo={false}
+                    size="small"
+                    strokeColor={pct >= 90 ? "#ff4d4f" : pct >= 70 ? "#faad14" : "#1890ff"}
+                    trailColor="#f0f0f0"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </Sider>
+
       <AntLayout>
         <Header
           style={{
@@ -108,7 +281,6 @@ export default function Layout() {
             padding: "0 24px",
           }}
         >
-          {/* 通知铃铛 */}
           <Badge count={unreadCount} size="small" offset={[-4, 4]}>
             <Button
               type="text"
@@ -167,7 +339,6 @@ export default function Layout() {
               }}
               onClick={() => {
                 if (!item.read) markRead(item.id);
-                // 点击跳转到关联实体
                 if (item.entity_type === "issue" && item.entity_id) {
                   navigate(`${basePath}/issues/${item.entity_id}`);
                   setNotifOpen(false);
@@ -200,6 +371,154 @@ export default function Layout() {
           )}
         />
       </Drawer>
+
+      {/* 全局资源管理 Drawer */}
+      <Drawer
+        title={
+          <Space>
+            <SettingOutlined />
+            <span>全局资源</span>
+          </Space>
+        }
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        width={480}
+        extra={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            size="small"
+            onClick={() => {
+              setEditingResource(null);
+              resourceForm.resetFields();
+              setResourceModalOpen(true);
+            }}
+          >
+            添加资源
+          </Button>
+        }
+      >
+        {resources.length === 0 && (
+          <div style={{ textAlign: "center", padding: 60, color: "#999" }}>
+            <SettingOutlined style={{ fontSize: 36, marginBottom: 12, display: "block" }} />
+            暂无资源，点击右上角添加
+          </div>
+        )}
+        {categories.map((cat) => {
+          const isExpanded = expandedCategories[cat];
+          const catResources = groupedResources[cat];
+          const { pct } = getCategorySummary(cat);
+          return (
+            <div key={cat} style={{ marginBottom: 12 }}>
+              {/* 类别头 - 可折叠 */}
+              <div
+                onClick={() => toggleCategory(cat)}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  background: "#fafafa",
+                  border: "1px solid #f0f0f0",
+                  userSelect: "none",
+                }}
+              >
+                <Space size={8}>
+                  {isExpanded ? <DownOutlined style={{ fontSize: 11 }} /> : <RightOutlined style={{ fontSize: 11 }} />}
+                  <Text strong>{cat}</Text>
+                  <Tag style={{ fontSize: 11 }}>{catResources.length}</Tag>
+                </Space>
+                <Space size={8} align="center">
+                  <Progress type="circle" percent={pct} size={28} strokeColor={pct >= 90 ? "#ff4d4f" : pct >= 70 ? "#faad14" : "#1890ff"} />
+                </Space>
+              </div>
+
+              {/* 展开的资源列表 */}
+              {isExpanded && (
+                <div style={{ padding: "8px 0 0 0" }}>
+                  {catResources.map((r) => {
+                    const rPct = r.total > 0 ? Math.round((r.current / r.total) * 100) : 0;
+                    return (
+                      <div
+                        key={r.id}
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: 6,
+                          marginBottom: 6,
+                          background: "#fff",
+                          border: "1px solid #f0f0f0",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                          <Text strong>{r.name}</Text>
+                          <Space size={4}>
+                            <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEditResource(r)} />
+                            <Button type="text" danger icon={<DeleteOutlined />} size="small" onClick={() => handleDeleteResource(r.id)} />
+                          </Space>
+                        </div>
+                        <Progress
+                          percent={rPct}
+                          size="small"
+                          status={rPct >= 100 ? "exception" : "active"}
+                        />
+                        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            已用 {r.current.toLocaleString()} / {r.total.toLocaleString()} {r.unit}
+                          </Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            剩余 {Math.max(0, r.total - r.current).toLocaleString()} {r.unit}
+                          </Text>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </Drawer>
+
+      {/* 资源添加/编辑弹窗 */}
+      <Modal
+        title={editingResource ? "编辑资源" : "添加资源"}
+        open={resourceModalOpen}
+        onCancel={() => {
+          setResourceModalOpen(false);
+          setEditingResource(null);
+        }}
+        onOk={() => resourceForm.submit()}
+      >
+        <Form form={resourceForm} onFinish={handleAddResource} layout="vertical">
+          <Form.Item name="category" label="所属类别" rules={[{ required: true, message: "请输入类别" }]}>
+            <Input placeholder="如 Token Plans、Code Plans，或输入新类别" list="resource-categories" />
+          </Form.Item>
+          <datalist id="resource-categories">
+            {categories.map((cat) => (
+              <option key={cat} value={cat} />
+            ))}
+          </datalist>
+          <Form.Item name="name" label="资源名称" rules={[{ required: true, message: "请输入资源名称" }]}>
+            <Input placeholder="如 Code Plan" />
+          </Form.Item>
+          <Form.Item name="current" label="当前用量">
+            <Input type="number" placeholder="0" />
+          </Form.Item>
+          <Form.Item name="total" label="总量上限">
+            <Input type="number" placeholder="1000" />
+          </Form.Item>
+          <Form.Item name="unit" label="单位">
+            <Input placeholder="如 次/月, tokens" />
+          </Form.Item>
+          {editingResource && (
+            <Form.Item name="id" hidden>
+              <Input />
+            </Form.Item>
+          )}
+        </Form>
+      </Modal>
     </AntLayout>
   );
 }

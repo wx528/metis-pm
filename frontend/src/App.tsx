@@ -15,6 +15,7 @@ import Milestones from "./pages/Milestones";
 import Plans from "./pages/Plans";
 import PlanDetail from "./pages/PlanDetail";
 import Servers from "./pages/Servers";
+import Projects from "./pages/Projects";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn } = useAuth();
@@ -48,6 +49,9 @@ function App() {
               <Route path="plans" element={<Navigate to="/projects/default/plans" replace />} />
               <Route path="plans/:id" element={<PlanDetail />} />
               <Route path="servers" element={<Navigate to="/projects/default/servers" replace />} />
+
+              {/* 项目管理（跨项目，不绑定 slug） */}
+              <Route path="projects" element={<Projects />} />
 
               {/* 新路由：带项目 slug */}
               <Route path="projects/:projectSlug/dashboard" element={<Dashboard />} />

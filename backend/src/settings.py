@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     )
 
     APP_NAME: str = "project_manager"
-    APP_VERSION: str = "0.4.0"
+    APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     DATABASE_URL: str = "sqlite+aiosqlite:///./project_manager.db"
     SECRET_KEY: str = ""

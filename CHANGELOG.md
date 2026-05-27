@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.0.0] - 2026-05-28
+
+### 里程碑：v1.0.0 正式版
+
+项目进入稳定维护阶段，统一容器编排并适配 Tailscale 内网部署。
+
+#### 变更摘要
+
+| 变更 | 说明 |
+|------|------|
+| `VERSION` | `1.0.0` |
+| 删除 `docker-compose.dev.yml` | 统一使用 `docker-compose.yml`，通过 `.env` 控制行为，简化运维 |
+| 更新 `Makefile` | 移除所有 `docker-compose.dev.yml` 引用，命令统一为 `up` / `up-build` / `restart` |
+| 更新 `deploy-guide.md` | 重写为 Tailscale 内网部署指南，覆盖家服-云机-本机三地组网场景 |
+| 更新 `.env.example` | 补充 Tailscale 配置说明（`HOST_IP`、`CORS_ORIGINS`） |
+| `docker-compose.yml` | `restart` 统一为 `unless-stopped`；前端 build arg 默认 `1.0.0`；补充 CORS 注释 |
+| `backend/src/settings.py` | 默认 `APP_VERSION` 更新为 `1.0.0` |
+
+#### Tailscale 部署要点
+
+- 家中服务器作为唯一 Docker 宿主运行全套服务
+- 云机器、工作本机通过 Tailscale IP（`100.x.x.x`）或 MagicDNS 域名访问
+- `.env` 中设置 `HOST_IP=家服TailscaleIP` 即可解决跨设备 CORS 问题
+- MCP Agent 配置中 `PM_API_URL` 需指向家服 Tailscale IP
+
+---
+
 ## [0.17.0] - 2026-05-25
 
 ### 新增：测试者（Tester）角色

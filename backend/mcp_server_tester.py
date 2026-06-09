@@ -329,14 +329,25 @@ async def list_all_issues(
 # ── 评论 ────────────────────────────────────────────
 
 @mcp.tool()
-async def add_comment(issue_id: int, content: str) -> str:
-    """给 Issue 添加测试评论（如复现步骤、测试环境信息），评论自动标记为 testing 类型"""
+async def add_comment(
+    issue_id: int,
+    content: str,
+    comment_type: str = "testing",
+) -> str:
+    """给 Issue 添加测试评论（如复现步骤、测试环境信息）。
+
+    Args:
+        issue_id: Issue ID
+        content: 评论内容
+        comment_type: 评论类型，可选 normal, testing, handover。默认 testing。
+    """
     tester_name = await _current_sub()
-    resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json={"content": content, "author": tester_name, "comment_type": "testing"})
+    resp = await _api_request("POST", f"{API_BASE}/issues/{issue_id}/comments", json={"content": content, "author": tester_name, "comment_type": comment_type})
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     data = resp.json()
-    return f"Comment #{data['id']} added to Issue #{issue_id} by {tester_name} (testing)"
+    type_info = f" [{comment_type}]" if comment_type != "testing" else ""
+    return f"Comment #{data['id']}{type_info} added to Issue #{issue_id} by {tester_name} (testing)"
 
 
 # ── 通知 ────────────────────────────────────────────
@@ -372,6 +383,110 @@ async def mark_notification_read(notification_id: int) -> str:
     if resp.status_code >= 400:
         return f"Error: {resp.status_code} - {resp.text}"
     return f"Notification #{notification_id} marked as read"
+
+
+_HANDOVER_TEMPLATES = {
+    "dev_complete": """## 交接: Issue 开发完成
+
+### 改动范围
+- 文件:
+- 涉及接口:
+
+### 测试情况
+- [ ] 单元测试通过
+- [ ] 集成测试通过
+
+### 已知问题/注意点
+-
+
+### 下一步
+- 请 @mate 审查代码
+- 或请 @tester 执行集成测试
+""",
+    "review_feedback": """## 审查反馈: Issue
+
+### 通过项
+-
+
+### 待修复
+- [ ]
+
+### 优先级
+- 建议修复后合并，不阻塞
+- 或 必须修复，阻塞发布
+""",
+    "test_report": """## 测试报告: Issue
+
+### 测试环境
+- 分支:
+- 数据库:
+
+### 结果
+- [ ] 功能正常
+- [ ] 发现 Bug（见下方）
+
+### Bug 详情
+- 步骤:
+- 预期:
+- 实际:
+- 建议: 修复后重新 @tester 验证
+""",
+}
+
+
+@mcp.tool()
+async def notify_role(
+    target_role: str,
+    title: str,
+    body: str = "",
+    entity_type: Optional[str] = None,
+    entity_id: Optional[int] = None,
+) -> str:
+    """给指定角色发送通知。
+
+    Args:
+        target_role: 目标角色，可选值: agent, mate, tester, registrar, admin
+        title: 通知标题
+        body: 通知正文
+        entity_type: 关联实体类型，如 issue, plan
+        entity_id: 关联实体 ID
+
+    Returns:
+        发送结果摘要
+    """
+    payload = {
+        "recipient": target_role,
+        "type": "role_notification",
+        "title": title,
+        "body": body,
+    }
+    if entity_type is not None:
+        payload["entity_type"] = entity_type
+    if entity_id is not None:
+        payload["entity_id"] = entity_id
+
+    resp = await _api_request("POST", f"{API_BASE}/notifications", json=payload)
+    if resp.status_code >= 400:
+        return f"Error: {resp.status_code} - {resp.text}"
+    data = resp.json()
+    return f"通知已发送给角色 '{target_role}': {title} (通知ID: {data.get('id', '?')})"
+
+
+@mcp.tool()
+async def get_handover_template(template_name: str) -> str:
+    """获取交接评论模板。
+
+    Args:
+        template_name: 模板名称，可选值: dev_complete（开发完成）, review_feedback（审查反馈）, test_report（测试报告）
+
+    Returns:
+        Markdown 格式的模板内容
+    """
+    tmpl = _HANDOVER_TEMPLATES.get(template_name)
+    if not tmpl:
+        available = ", ".join(_HANDOVER_TEMPLATES.keys())
+        return f"错误: 未知模板 '{template_name}'。可用模板: {available}"
+    return tmpl
 
 
 # ── 项目 & 里程碑 ──────────────────────────────────

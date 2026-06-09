@@ -8,6 +8,7 @@ from src.core.database import Base
 class CommentType:
     NORMAL = "normal"
     MANAGEMENT = "management"
+    HANDOVER = "handover"
 
 
 class Comment(Base):

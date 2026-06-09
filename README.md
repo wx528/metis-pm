@@ -73,13 +73,31 @@ docker compose up -d
                             └───────┘ └──────┘ └───────┘
 ```
 
-### MCP 传输模式
+### MCP 传输模式（推荐 Streamable HTTP）
 
-| 模式 | 端点 | 适用场景 |
-|------|------|---------|
-| Streamable HTTP | `http://host:9000/mcp` | 远程 Agent（Hermes 等），无需本地脚本 |
+本项目**默认且推荐**使用 **Streamable HTTP** 模式，适合内网/远程部署，各 IDE 无需安装本地脚本：
+
+| 模式 | 端点 | 说明 |
+|------|------|------|
+| **Streamable HTTP** | `http://host:9000/mcp` | **推荐**，内网 Agent 直连，配置简单 |
 | SSE | `http://host:9000/sse` | 旧版客户端兼容 |
-| stdio | 本地进程 | 本地 Agent（Cline/CodeBuddy 等） |
+
+所有角色的 MCP Server 均通过 HTTP 暴露，IDE 只需填写 URL 和密码即可连接：
+
+```json
+{
+  "mcpServers": {
+    "pm-agent": {
+      "url": "http://192.168.1.100:9000/mcp",
+      "headers": { "X-PM-Password": "CHANGE-ME" }
+    },
+    "pm-mate": {
+      "url": "http://192.168.1.100:9001/mcp",
+      "headers": { "X-PM-Password": "mate-2026" }
+    }
+  }
+}
+```
 
 ### 多身份认证
 
@@ -87,10 +105,10 @@ docker compose up -d
 
 ```env
 # .env
-AGENT_PASSWORDS=trae:CHANGE-ME,hermes-agent:CHANGE-ME,cline:CHANGE-ME
+AGENT_PASSWORDS=trae:CHANGE-ME,mate:mate-2026,tester:tester-2026
 ```
 
-HTTP 模式通过 `X-PM-Password` 请求头传递密码，stdio 模式通过 `PM_AGENT_PASSWORD` 环境变量。
+HTTP 模式通过 `X-PM-Password` 请求头传递密码。
 
 ## MCP 工具
 

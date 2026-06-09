@@ -24,31 +24,29 @@ AGENT_PASSWORDS=trae:CHANGE-ME,cursor:cursor-2026,mate:mate-2026,tester:tester-2
 
 ---
 
-## 一、快速开始
+## 一、快速开始（HTTP 模式）
 
 ### 1. 确保后端已运行
 
 ```bash
-# 本地开发
-cd backend && python main.py
-
-# 或 Docker 部署
+# Docker 部署（推荐，自动启动所有 MCP Server）
 docker compose up -d
+
+# 或本地开发
+cd backend && python main.py
 ```
 
 ### 2. 配置 MCP
 
-在 CodeBuddy / Cline 的 MCP 配置文件中添加：
+在 IDE（Cursor / Cline / Trae）的 MCP 配置文件中添加：
 
 ```json
 {
   "mcpServers": {
-    "project-manager": {
-      "command": "python",
-      "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
-      "env": {
-        "PM_API_URL": "http://localhost:8000/api/v1",
-        "PM_AGENT_PASSWORD": "your-agent-password"
+    "pm-agent": {
+      "url": "http://localhost:9000/mcp",
+      "headers": {
+        "X-PM-Password": "your-agent-password"
       }
     }
   }
@@ -59,10 +57,8 @@ docker compose up -d
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `PM_API_URL` | ✅ | 后端 API 地址，本地为 `http://localhost:8000/api/v1`，内网为 `http://192.168.1.100:8000/api/v1` |
-| `PM_AGENT_PASSWORD` | ✅ | Agent 密码，对应 `.env` 中 `AGENT_PASSWORDS` 的某一项 |
-
-> ⚠️ 旧版 `PM_TOKEN` 已废弃。MCP Server 启动时会用 `PM_AGENT_PASSWORD` 自动登录获取 JWT Token，无需手动获取。
+| `url` | ✅ | MCP Server 地址，Docker 为 `http://localhost:9000/mcp`，内网为 `http://192.168.1.100:9000/mcp` |
+| `headers.X-PM-Password` | ✅ | Agent 密码，对应 `.env` 中 `AGENT_PASSWORDS` 的某一项 |
 
 ### 3. 验证连接
 
@@ -75,24 +71,22 @@ docker compose up -d
 预期返回：
 
 ```
-Connected OK. Identity: buddy (role=agent)
+Connected OK. Identity: trae (role=agent)
 ```
 
 ---
 
 ## 二、内网部署配置
 
-当后端部署到内网服务器时，修改 `PM_API_URL` 为服务器内网 IP：
+当后端部署到内网服务器时（如 Tailscale/家服），修改 `url` 为服务器内网 IP：
 
 ```json
 {
   "mcpServers": {
-    "project-manager": {
-      "command": "python",
-      "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
-      "env": {
-        "PM_API_URL": "http://192.168.1.100:8000/api/v1",
-        "PM_AGENT_PASSWORD": "CHANGE-ME"
+    "pm-agent": {
+      "url": "http://192.168.1.100:9000/mcp",
+      "headers": {
+        "X-PM-Password": "CHANGE-ME"
       }
     }
   }
@@ -105,41 +99,37 @@ Connected OK. Identity: buddy (role=agent)
 
 ## 三、角色配置实例
 
-### Agent 角色（Cursor）
+### Agent 角色（Cursor / Trae）
 
 ```json
 {
   "mcpServers": {
     "pm-agent": {
-      "command": "python",
-      "args": ["D:/project-manager-system/backend/mcp_server.py"],
-      "env": {
-        "PM_API_URL": "http://localhost:8000/api/v1",
-        "PM_AGENT_PASSWORD": "cursor-2026"
+      "url": "http://localhost:9000/mcp",
+      "headers": {
+        "X-PM-Password": "CHANGE-ME"
       }
     }
   }
 }
 ```
 
-### Mate 角色（Cline）
+### Mate 角色（Cline / Windsurf）
 
 ```json
 {
   "mcpServers": {
     "pm-mate": {
-      "command": "python",
-      "args": ["D:/project-manager-system/backend/mcp_server_mate.py"],
-      "env": {
-        "PM_API_URL": "http://localhost:8000/api/v1",
-        "PM_AGENT_PASSWORD": "mate-2026"
+      "url": "http://localhost:9001/mcp",
+      "headers": {
+        "X-PM-Password": "mate-2026"
       }
     }
   }
 }
 ```
 
-### Tester 角色（HTTP 模式）
+### Tester 角色
 
 ```json
 {
@@ -148,6 +138,21 @@ Connected OK. Identity: buddy (role=agent)
       "url": "http://localhost:9002/mcp",
       "headers": {
         "X-PM-Password": "tester-2026"
+      }
+    }
+  }
+}
+```
+
+### Registrar 角色
+
+```json
+{
+  "mcpServers": {
+    "pm-registrar": {
+      "url": "http://localhost:9003/mcp",
+      "headers": {
+        "X-PM-Password": "CHANGE-ME"
       }
     }
   }

@@ -43,6 +43,9 @@ async def get_agent_status(
 
         # 状态判断
         if last_active:
+            # SQLite 返回的是 naive datetime，假设为 UTC
+            if last_active.tzinfo is None:
+                last_active = last_active.replace(tzinfo=timezone.utc)
             delta = now - last_active
             if delta < timedelta(hours=1):
                 status = "online"

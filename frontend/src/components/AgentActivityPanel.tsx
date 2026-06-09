@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Row, Col, Tag, Spin, Empty, Badge, Tooltip } from "antd";
+import { Card, Row, Col, Tag, Spin, Empty, Badge } from "antd";
 import {
   RobotOutlined,
   CheckCircleOutlined,
@@ -41,21 +41,21 @@ export default function AgentActivityPanel({ onHandoverClick }: Props) {
   const [handovers, setHandovers] = useState<PendingHandover[]>([]);
   const { currentProject } = useProject();
 
-  const load = async () => {
-    if (!currentProject) return;
-    setLoading(true);
-    try {
-      const res = await agentStatusApi.get(currentProject.id);
-      setAgents(res.data.agents);
-      setHandovers(res.data.pending_handovers);
-    } catch (err) {
-      console.error("Failed to load agent status:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const load = async () => {
+      if (!currentProject) return;
+      setLoading(true);
+      try {
+        const res = await agentStatusApi.get(currentProject.id);
+        setAgents(res.data.agents);
+        setHandovers(res.data.pending_handovers);
+      } catch (err) {
+        console.error("Failed to load agent status:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     load();
     const timer = setInterval(load, 60000); // 每60秒刷新
     return () => clearInterval(timer);

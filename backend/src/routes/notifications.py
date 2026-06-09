@@ -30,8 +30,8 @@ def _recipient_filter(user: dict):
         return or_(personal, role_match, agent_broadcast)
     if role in ("mate", "tester", "registrar"):
         return or_(personal, role_match)
-    # admin / user
-    return or_(personal, Notification.recipient == "admin")
+    # admin / user：admin 可以看到所有通知（包括角色通知），用于监控
+    return or_(personal, Notification.recipient == "admin", Notification.recipient.in_(["agent", "mate", "tester", "registrar", "ai_agent"]))
 
 
 @router.get("", response_model=NotificationListResponse)

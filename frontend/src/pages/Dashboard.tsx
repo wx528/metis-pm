@@ -20,6 +20,7 @@ import { statsApi } from "../api/stats";
 import type { DashboardData } from "../api";
 import type { AgentProductivity, PlanCompletion } from "../api/stats";
 import { useProject } from "../hooks/useProject";
+import AgentActivityPanel from "../components/AgentActivityPanel";
 
 const actionIcons: Record<string, React.ReactNode> = {
   created: <PlusOutlined />,
@@ -96,6 +97,8 @@ export default function Dashboard() {
 
   return (
     <div>
+      <AgentActivityPanel />
+
       <h2>仪表盘{currentProject ? ` — ${currentProject.name}` : ""}</h2>
 
       {/* Issues 统计 */}

@@ -116,9 +116,12 @@ async def notification_stream(
 ):
     """SSE 端点：实时推送通知到当前用户"""
     recipient = user["sub"]
+    role = user.get("role", "")
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     register_sse_connection(recipient, queue)
-    if user.get("role") == "agent" and recipient != "ai_agent":
+    if role and role != recipient:
+        register_sse_connection(role, queue)
+    if role == "agent" and recipient != "ai_agent":
         register_sse_connection("ai_agent", queue)
 
     async def event_generator():
@@ -136,7 +139,9 @@ async def notification_stream(
             pass
         finally:
             unregister_sse_connection(recipient, queue)
-            if user.get("role") == "agent" and recipient != "ai_agent":
+            if role and role != recipient:
+                unregister_sse_connection(role, queue)
+            if role == "agent" and recipient != "ai_agent":
                 unregister_sse_connection("ai_agent", queue)
 
     return StreamingResponse(

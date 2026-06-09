@@ -76,6 +76,9 @@ export default function ActivityTimeline({ entityType, entityId }: Props) {
               {log.actor === "ai_agent" ? " AI Agent" : " 用户"}
             </Tag>
             <Tag>{actionLabels[log.action] || log.action}</Tag>
+            {log.new_value?.comment_type === "handover" && (
+              <Tag color="orange">🔄 交接</Tag>
+            )}
             {log.new_value && log.action === "status_changed" && (
               <span style={{ color: "#666", marginLeft: 8 }}>
                 {log.old_value?.status} → {log.new_value.status}

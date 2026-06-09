@@ -202,6 +202,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Prometheus 监控：自动收集请求延迟、吞吐量、错误率等指标
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    instrumentator = Instrumentator()
+    instrumentator.instrument(app).expose(app)
+    logger.info("Prometheus metrics exposed at /metrics")
+except ImportError:
+    logger.warning("prometheus-fastapi-instrumentator not installed, metrics disabled")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS.split(","),

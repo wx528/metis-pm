@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from src.core.dependencies import get_db
 from src.core.activity import log_activity
 from src.core.notification import create_notification
+from src.core.metrics import agent_operations_total, issue_transitions_total, handovers_total
 from src.models.issue import Issue, IssueType, IssueStatus, IssuePriority, IssueSource
 from src.models.notification import NotificationType
 from src.models.comment import Comment
@@ -90,6 +91,13 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
     db.add(issue)
     await db.commit()
     await db.refresh(issue)
+
+    # 业务指标：记录 Agent 操作
+    agent_operations_total.labels(
+        role=user["role"],
+        operation="create",
+        entity_type="issue"
+    ).inc()
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,
@@ -210,6 +218,12 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
     action = "updated"
     if "status" in update_data:
         action = "status_changed" if update_data["status"] != old_values.get("status") else "updated"
+        if action == "status_changed":
+            # 业务指标：Issue 状态流转
+            issue_transitions_total.labels(
+                from_status=old_values.get("status", "unknown"),
+                to_status=update_data["status"]
+            ).inc()
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,
@@ -356,6 +370,17 @@ async def add_comment(issue_id: int, data: CommentCreate, db: AsyncSession = Dep
     db.add(comment)
     await db.commit()
     await db.refresh(comment)
+
+    # 业务指标：Handover 评论统计
+    if data.comment_type == "handover":
+        # 尝试从评论内容解析 @目标角色
+        import re
+        at_match = re.search(r'@(\w+)', data.content)
+        to_role = at_match.group(1) if at_match else "unknown"
+        handovers_total.labels(
+            from_role=user["role"],
+            to_role=to_role
+        ).inc()
 
     await log_activity(
         db, entity_type="issue", entity_id=issue.id,

@@ -13,6 +13,7 @@ class NotificationType(str, enum.Enum):
     TASK_FAILED = "task_failed"
     MENTION = "mention"
     WORKFLOW_PAUSED = "workflow_paused"
+    ROLE_NOTIFICATION = "role_notification"
     INFO = "info"
 
 

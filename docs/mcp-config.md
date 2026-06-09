@@ -5,6 +5,23 @@ Project Manager System 的 MCP Server 让 AI Coding Agent（如 CodeBuddy、Clin
 > 适用版本: v0.7.0+
 > 最后更新: 2026-05-18
 
+## 零、角色与分工
+
+Project Manager System 支持多角色 Agent 协作：
+
+| 角色 | 职责 | 推荐 IDE | MCP Server |
+|------|------|---------|-----------|
+| **agent** | 日常开发：编码、创建 issue、完成 plan | Cursor / Trae | `mcp_server.py` |
+| **mate** | 架构审查：审查代码、批准 plan | Cline / Windsurf | `mcp_server_mate.py` |
+| **tester** | 测试验证：提交 bug、验证修复 | 独立终端 | `mcp_server_tester.py` |
+| **registrar** | 项目登记：初始化项目、创建里程碑 | CLI 脚本 | `mcp_server_registrar.py` |
+
+每个角色使用独立的密码，在 `.env` 中配置：
+
+```env
+AGENT_PASSWORDS=trae:CHANGE-ME,cursor:cursor-2026,mate:mate-2026,tester:tester-2026,registrar:CHANGE-ME
+```
+
 ---
 
 ## 一、快速开始
@@ -86,7 +103,60 @@ Connected OK. Identity: buddy (role=agent)
 
 ---
 
-## 三、可用工具一览（22 个）
+## 三、角色配置实例
+
+### Agent 角色（Cursor）
+
+```json
+{
+  "mcpServers": {
+    "pm-agent": {
+      "command": "python",
+      "args": ["D:/project-manager-system/backend/mcp_server.py"],
+      "env": {
+        "PM_API_URL": "http://localhost:8000/api/v1",
+        "PM_AGENT_PASSWORD": "cursor-2026"
+      }
+    }
+  }
+}
+```
+
+### Mate 角色（Cline）
+
+```json
+{
+  "mcpServers": {
+    "pm-mate": {
+      "command": "python",
+      "args": ["D:/project-manager-system/backend/mcp_server_mate.py"],
+      "env": {
+        "PM_API_URL": "http://localhost:8000/api/v1",
+        "PM_AGENT_PASSWORD": "mate-2026"
+      }
+    }
+  }
+}
+```
+
+### Tester 角色（HTTP 模式）
+
+```json
+{
+  "mcpServers": {
+    "CHANGE-MEer": {
+      "url": "http://localhost:9002/mcp",
+      "headers": {
+        "X-PM-Password": "tester-2026"
+      }
+    }
+  }
+}
+```
+
+---
+
+## 四、可用工具一览（22 个）
 
 ### 通用
 
@@ -152,9 +222,32 @@ Connected OK. Identity: buddy (role=agent)
 | `trigger_workflow` | 手动触发工作流 |
 | `list_workflow_runs` | 查看工作流执行记录 |
 
+### 协作工具（新增）
+
+| 工具 | 功能 |
+|------|------|
+| `notify_role` | 给指定角色发送通知（如通知 mate 审查） |
+| `get_handover_template` | 获取交接评论模板（dev_complete / review_feedback / test_report） |
+
+#### notify_role 示例
+
+```
+Agent 完成开发后调用：
+notify_role(target_role="mate", title="Issue #5 开发完成待审查", entity_type="issue", entity_id=5)
+→ Mate 的 check_notifications 会收到此通知
+```
+
+#### get_handover_template 示例
+
+```
+get_handover_template(template_name="dev_complete")
+→ 返回 Markdown 格式的开发完成交接模板
+Agent 填写后通过 add_issue_comment(comment_type="handover") 发送
+```
+
 ---
 
-## 四、典型场景
+## 五、典型场景
 
 ### Agent 发现问题，创建 Issue
 
@@ -194,7 +287,7 @@ Agent 调用 trigger_workflow(workflow_id=5)
 
 ---
 
-## 五、安全注意事项
+## 六、安全注意事项
 
 - **凭据已加密**：服务器密码和 SSH Key 使用 Fernet 对称加密存储，密钥从 `ENCRYPTION_KEY` 环境变量读取
 - **凭据 API 限 admin**：`GET /servers/{id}/credentials` 仅 admin 角色可访问，且有审计日志

@@ -17,13 +17,21 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 def _recipient_filter(user: dict):
-    if user.get("role") == "agent":
-        return or_(Notification.recipient == user["sub"], Notification.recipient == "ai_agent")
-    if user.get("role") == "mate":
-        return or_(Notification.recipient == user["sub"], Notification.recipient == "admin")
-    if user.get("role") == "tester":
-        return Notification.recipient == user["sub"]
-    return Notification.recipient == user["sub"]
+    sub = user.get("sub", "")
+    role = user.get("role", "")
+    # 直接发给该用户的通知
+    personal = Notification.recipient == sub
+    # 发给该角色所有成员的通知（agent, mate, tester, registrar 等）
+    role_match = Notification.recipient == role
+    # 发给 ai_agent 泛角色的通知（所有 agent 角色可见）
+    agent_broadcast = Notification.recipient == "ai_agent" if role == "agent" else False
+
+    if role == "agent":
+        return or_(personal, role_match, agent_broadcast)
+    if role in ("mate", "tester", "registrar"):
+        return or_(personal, role_match)
+    # admin / user
+    return or_(personal, Notification.recipient == "admin")
 
 
 @router.get("", response_model=NotificationListResponse)
@@ -79,7 +87,8 @@ async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db), us
     notification = result.scalar_one_or_none()
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
-    if notification.recipient != user["sub"] and notification.recipient != "ai_agent":
+    allowed = [user["sub"], user.get("role", ""), "ai_agent" if user.get("role") == "agent" else ""]
+    if notification.recipient not in allowed:
         raise HTTPException(status_code=403, detail="Not your notification")
     notification.read = True
     await db.commit()

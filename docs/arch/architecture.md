@@ -56,18 +56,13 @@ Project Manager System 是一个专为 **用户 + 多个 AI Coding Agent** 协�
 │  │                   └──────────┘                          │  │
 │  └─────────────────────────────────────────────────────────┘  │
 │                           │                                    │
-│              ┌────────────┼────────────┐                      │
-│              │            │            │                      │
-│              ▼            ▼            ▼                      │
-│        ┌─────────┐ ┌─────────┐ ┌─────────┐                   │
-│        │mcp:9000 │ │mcp:9001 │ │mcp:9002 │                   │
-│        │ (agent) │ │ (mate)  │ │(tester) │                   │
-│        └─────────┘ └─────────┘ └─────────┘                   │
-│                           │                                   │
-│                   ┌───────┴───────┐                          │
-│                   │  mcp:9003     │                          │
-│                   │ (registrar)   │                          │
-│                   └───────────────┘                          │
+│                           ▼                                    │
+│                   ┌──────────────┐                            │
+│                   │  mcp:9000    │                            │
+│                   │ 统一 Server  │                            │
+│                   │ (agent/mate/ │                            │
+│                   │ tester/reg)  │                            │
+│                   └──────────────┘                            │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -77,10 +72,7 @@ Project Manager System 是一个专为 **用户 + 多个 AI Coding Agent** 协�
 |------|--------|------|------|
 | backend | pm-backend | 8000 | FastAPI REST API |
 | frontend | pm-frontend | 8080 | React SPA (Nginx) |
-| mcp-agent | pm-mcp | 9000 | Agent MCP Server |
-| mcp-mate | pm-mcp-mate | 9001 | Mate MCP Server |
-| mcp-tester | pm-mcp-tester | 9002 | Tester MCP Server |
-| mcp-registrar | pm-mcp-registrar | 9003 | Registrar MCP Server |
+| mcp | pm-mcp | 9000 | 统一 MCP Server（4 角色共用） |
 
 ---
 
@@ -215,12 +207,14 @@ frontend/src/
 
 ### 5.2 角色与端口
 
-| 角色 | 职责 | 端口 | 容器 |
+| 角色 | 职责 | 端口 | 说明 |
 |------|------|------|------|
-| **agent** | 日常开发、创建 issue、完成 plan | 9000 | pm-mcp |
-| **mate** | 架构审查、批准 plan、协调冲突 | 9001 | pm-mcp-mate |
-| **tester** | 测试验证、提交 bug、验证修复 | 9002 | pm-mcp-tester |
-| **registrar** | 项目登记、初始化项目、创建里程碑 | 9003 | pm-mcp-registrar |
+| **agent** | 日常开发、创建 issue、完成 plan | 9000 | 共用统一 Server |
+| **mate** | 架构审查、批准 plan、协调冲突 | 9000 | 共用统一 Server |
+| **tester** | 测试验证、提交 bug、验证修复 | 9000 | 共用统一 Server |
+| **registrar** | 项目登记、初始化项目、创建里程碑 | 9000 | 共用统一 Server |
+
+**统一设计**：所有角色通过**同一个端口 9000**接入，由 `X-PM-Password` 请求头自动识别角色并分配对应工具权限。
 
 ### 5.3 MCP 连接方式
 
@@ -232,12 +226,14 @@ frontend/src/
       "headers": { "X-PM-Password": "CHANGE-ME" }
     },
     "pm-mate": {
-      "url": "http://192.168.1.100:9001/mcp",
+      "url": "http://192.168.1.100:9000/mcp",
       "headers": { "X-PM-Password": "mate-2026" }
     }
   }
 }
 ```
+
+> **优势**：所有角色使用**同一个 URL**，只需修改密码即可切换角色权限。部署从 4 个容器缩减为 1 个，大幅降低运维复杂度。
 
 ### 5.4 核心 MCP 工具
 

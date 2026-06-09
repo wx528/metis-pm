@@ -99,7 +99,9 @@ Connected OK. Identity: trae (role=agent)
 
 ## 三、角色配置实例
 
-### Agent 角色（Cursor / Trae）
+### 统一入口（推荐）
+
+所有角色**共用同一个 URL**，通过不同的 `X-PM-Password` 自动识别角色：
 
 ```json
 {
@@ -109,33 +111,15 @@ Connected OK. Identity: trae (role=agent)
       "headers": {
         "X-PM-Password": "CHANGE-ME"
       }
-    }
-  }
-}
-```
-
-### Mate 角色（Cline / Windsurf）
-
-```json
-{
-  "mcpServers": {
+    },
     "pm-mate": {
-      "url": "http://localhost:9001/mcp",
+      "url": "http://localhost:9000/mcp",
       "headers": {
         "X-PM-Password": "mate-2026"
       }
-    }
-  }
-}
-```
-
-### Tester 角色
-
-```json
-{
-  "mcpServers": {
+    },
     "CHANGE-MEer": {
-      "url": "http://localhost:9002/mcp",
+      "url": "http://localhost:9000/mcp",
       "headers": {
         "X-PM-Password": "tester-2026"
       }
@@ -144,20 +128,7 @@ Connected OK. Identity: trae (role=agent)
 }
 ```
 
-### Registrar 角色
-
-```json
-{
-  "mcpServers": {
-    "pm-registrar": {
-      "url": "http://localhost:9003/mcp",
-      "headers": {
-        "X-PM-Password": "CHANGE-ME"
-      }
-    }
-  }
-}
-```
+> **关键区别**：所有角色使用**同一个端口 9000**，只需修改密码即可切换角色权限。身份由 `.env` 中的 `AGENT_PASSWORDS` 自动解析。
 
 ---
 

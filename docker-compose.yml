@@ -39,83 +39,12 @@ services:
       - MCP_TRANSPORT=streamable-http
       - MCP_PORT=9000
       - MCP_HOST=0.0.0.0
+      # 角色密码从 AGENT_PASSWORDS 统一读取，无需单独设置
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
-    entrypoint: ["python", "mcp_server.py"]
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
-
-  mcp-mate:
-    build: ./backend
-    container_name: pm-mcp-mate
-    ports:
-      - "${MCP_MATE_PORT:-9001}:9001"
-    env_file:
-      - .env
-    environment:
-      - PM_API_URL=http://backend:8000/api/v1
-      - MCP_TRANSPORT=streamable-http
-      - MCP_PORT=9001
-      - MCP_HOST=0.0.0.0
-      - PM_AGENT_PASSWORD=${MATE_PASSWORD:-CHANGE-ME}
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    entrypoint: ["python", "mcp_server_mate.py"]
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
-
-  mcp-tester:
-    build: ./backend
-    container_name: pm-mcp-tester
-    ports:
-      - "${MCP_TESTER_PORT:-9002}:9002"
-    env_file:
-      - .env
-    environment:
-      - PM_API_URL=http://backend:8000/api/v1
-      - MCP_TRANSPORT=streamable-http
-      - MCP_PORT=9002
-      - MCP_HOST=0.0.0.0
-      - PM_AGENT_PASSWORD=${TESTER_PASSWORD:-CHANGE-ME}
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    entrypoint: ["python", "mcp_server_tester.py"]
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
-
-  mcp-registrar:
-    build: ./backend
-    container_name: pm-mcp-registrar
-    ports:
-      - "${MCP_REGISTRAR_PORT:-9003}:9003"
-    env_file:
-      - .env
-    environment:
-      - PM_API_URL=http://backend:8000/api/v1
-      - MCP_TRANSPORT=streamable-http
-      - MCP_PORT=9003
-      - MCP_HOST=0.0.0.0
-      - PM_AGENT_PASSWORD=${REGISTRAR_PASSWORD:-CHANGE-ME}
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    entrypoint: ["python", "mcp_server_registrar.py"]
+    entrypoint: ["python", "mcp_server_unified.py"]
     logging:
       driver: json-file
       options:

@@ -61,15 +61,16 @@ docker compose up -d
 │  (你用的)    │                   │             │  project_manager.db
 └─────────────┘                   └──────┬──────┘
                                          │
-                                    MCP Server (Streamable HTTP / SSE / stdio)
+                                    MCP Server (Streamable HTTP)
                                     ┌─────┴──────┐
-                                    │  多身份认证  │ ← X-PM-Password 请求头
+                                    │  统一入口   │ :9000
+                                    │ 角色自动识别 │ ← X-PM-Password
                                     └─────┬──────┘
                                  ┌────────┼────────┐
                                  │        │        │
                             ┌────┴──┐ ┌──┴───┐ ┌──┴────┐
-                            │ Agent │ │Agent │ │ Agent │
-                            │  trae │ │hermes│ │ cline │
+                            │ Agent │ │ Mate │ │Tester │
+                            │  trae │ │ cline│ │ (qa)  │
                             └───────┘ └──────┘ └───────┘
 ```
 

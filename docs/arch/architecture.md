@@ -396,7 +396,31 @@ cd frontend && npm run dev
                └─────────┘
 ```
 
-### 9.2 Plan 审批流
+### 9.2 SQLite 并发优化
+
+系统使用 SQLite + aiosqlite 作为数据库，已启用 **WAL 模式**（Write-Ahead Logging）：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  WAL 模式特性                                               │
+│  • 读不阻塞写，写不阻塞读                                     │
+│  • 支持多读 + 一写并发                                        │
+│  • 写入速度提升（追加日志而非重写文件）                         │
+│  • 自动 checkpoint，无需手动干预                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**配置**：`src/core/database.py` 中通过 PRAGMA 自动启用
+- `journal_mode=WAL`
+- `synchronous=NORMAL`（平衡性能与可靠性）
+- `temp_store=MEMORY`（减少磁盘 I/O）
+
+**连接池**：
+- `pool_size=5`（保持的连接数）
+- `max_overflow=10`（突发并发额外连接）
+- `pool_timeout=30`（等待可用连接超时）
+
+### 9.3 Plan 审批流
 
 ```
 Agent 提议 → pending_approval → 用户审批通过 → active → Agent 更新进展
@@ -410,7 +434,7 @@ Agent 提议 → pending_approval → 用户审批通过 → active → Agent �
 
 | 层级 | 技术 |
 |------|------|
-| 后端 | Python 3.11, FastAPI, SQLAlchemy 2.0 (async), SQLite, JWT |
+| 后端 | Python 3.11, FastAPI, SQLAlchemy 2.0 (async), SQLite (WAL 模式), JWT |
 | 前端 | React 19, TypeScript, Ant Design 6, Vite, React Router 7 |
 | MCP | FastMCP, Streamable HTTP, httpx |
 | 部署 | Docker, Docker Compose, Nginx |

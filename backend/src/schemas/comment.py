@@ -18,6 +18,8 @@ class CommentRead(BaseModel):
     parent_id: Optional[int] = None
     comment_type: str = "normal"
     created_at: Optional[datetime] = None
+    read_by: Optional[str] = None      # 谁已读
+    read_at: Optional[datetime] = None # 何时已读
 
     class Config:
         from_attributes = True

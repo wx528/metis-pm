@@ -186,6 +186,18 @@ async def _run_migrations(conn):
             logger.info("Added comment_type column to comments")
         except Exception as e:
             logger.warning(f"Failed to add comment_type to comments: {e}")
+    if "read_by" not in comments_cols:
+        try:
+            await conn.execute(text("ALTER TABLE comments ADD COLUMN read_by VARCHAR(100)"))
+            logger.info("Added read_by column to comments")
+        except Exception as e:
+            logger.warning(f"Failed to add read_by to comments: {e}")
+    if "read_at" not in comments_cols:
+        try:
+            await conn.execute(text("ALTER TABLE comments ADD COLUMN read_at DATETIME"))
+            logger.info("Added read_at column to comments")
+        except Exception as e:
+            logger.warning(f"Failed to add read_at to comments: {e}")
 
 
 async def _check_stuck_workflows():

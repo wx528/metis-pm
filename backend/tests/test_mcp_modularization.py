@@ -74,7 +74,7 @@ class TestMCPModularization:
         """Verify expected tool counts in each role module."""
         # Count @mcp.tool() decorators in each file
         role_counts = {
-            "shared.py": 16,   # All roles
+            "shared.py": 18,   # All roles (added mark_handover_read + check_unread_handovers)
             "agent.py": 19,    # Agent only
             "mate.py": 7,      # Mate only
             "tester.py": 7,    # Tester only
@@ -96,7 +96,7 @@ class TestMCPModularization:
             content = filepath.read_text(encoding="utf-8")
             total += content.count("@mcp.tool()")
 
-        assert total == 55, f"Total tools should be 55, found {total}"
+        assert total == 57, f"Total tools should be 57, found {total}"
 
     def test_entry_point_has_decorators(self):
         """Entry point should define require_role and safe_tool decorators."""

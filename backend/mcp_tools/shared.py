@@ -538,6 +538,57 @@ def register_tools(mcp, require_role, safe_tool):
     @mcp.tool()
     @require_role("agent", "mate", "tester", "registrar", "admin")
     @safe_tool
+    async def mark_handover_read(comment_id: int) -> str:
+        """标记一条交接评论为已读。Agent 收到交接后调用此工具确认已读。
+
+        Args:
+            comment_id: 交接评论的 ID
+
+        Returns:
+            确认结果
+        """
+        agent_name = await _current_sub()
+        resp = await _api_request("PUT", f"{API_BASE}/issue-comments/{comment_id}/read")
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        return f"✅ 已标记交接评论 #{comment_id} 为已读 (by {agent_name})"
+
+    @mcp.tool()
+    @require_role("agent", "mate", "tester", "registrar", "admin")
+    @safe_tool
+    async def check_unread_handovers(limit: int = 20) -> str:
+        """检查当前 Agent 的未读交接评论。
+
+        Args:
+            limit: 最多返回多少条，默认 20
+
+        Returns:
+            未读交接列表
+        """
+        agent_name = await _current_sub()
+        resp = await _api_request(
+            "GET",
+            f"{API_BASE}/issue-comments",
+            params={
+                "comment_type": "handover",
+                "unread_only": "true",
+                "limit": limit,
+            },
+        )
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        items = resp.json()
+        if not items:
+            return f"{agent_name}: 没有未读交接 ✅"
+        lines = [f"未读交接 ({len(items)}):"]
+        for item in items:
+            lines.append(f"  #{item['id']} Issue #{item['issue_id']} by {item['author']} at {item['created_at']}")
+            lines.append(f"    {item['content'][:200]}...")
+        return "\n".join(lines)
+
+    @mcp.tool()
+    @require_role("agent", "mate", "tester", "registrar", "admin")
+    @safe_tool
     async def list_workflows(project_id: Optional[int] = None) -> str:
         """列出工作流（含步骤概要）"""
         params = {}

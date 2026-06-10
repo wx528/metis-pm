@@ -11,6 +11,8 @@ from src.core.database import engine, Base
 from src.routes import api_router
 from src.settings import settings
 from src.core.crypto import encrypt_value
+from src.core.message_queue import message_queue, create_message_queue_backup_table
+from src.core.workflow_timeout import workflow_timeout_monitor
 
 
 def _get_version() -> str:
@@ -273,10 +275,23 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         await _run_migrations(conn)
     
-    # 启动后台任务：检测卡住的工作流
-    task = asyncio.create_task(_check_stuck_workflows())
+    # 创建消息队列备份表
+    await create_message_queue_backup_table()
+    
+    # 启动消息队列消费者
+    await message_queue.start()
+    
+    # 启动后台任务
+    tasks = [
+        asyncio.create_task(_check_stuck_workflows()),
+        asyncio.create_task(workflow_timeout_monitor()),
+    ]
     yield
-    task.cancel()
+    
+    # 清理
+    for task in tasks:
+        task.cancel()
+    await message_queue.stop()
 
 
 app = FastAPI(

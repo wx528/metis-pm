@@ -496,7 +496,10 @@ def register_tools(mcp, require_role, safe_tool):
 
         resp = await _api_request("POST", f"{API_BASE}/notifications", json=payload)
         if resp.status_code >= 400:
-            return f"Error: {resp.status_code} - {resp.text}"
+            # API 调用失败，放入消息队列稍后重试
+            from src.core.message_queue import message_queue
+            await message_queue.enqueue(payload)
+            return f"⚠️ API 暂时不可用，通知已排队稍后发送: {title}"
         data = resp.json()
         return f"通知已发送给角色 '{target_role}': {title} (通知ID: {data.get('id', '?')})"
 

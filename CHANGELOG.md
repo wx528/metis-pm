@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.2.0] - 2026-06-10
+
+### 重构：MCP Server 模块化拆分
+
+将 1746 行的 `mcp_server_unified.py` 按角色拆分为独立模块，提升可维护性和代码清晰度。入口文件精简至 123 行，删除 4 个遗留的独立 MCP Server 文件。
+
+#### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/mcp_tools/__init__.py` | MCP 工具包入口，提供 `register_all_tools()` 统一注册 |
+| `backend/mcp_tools/shared.py` | 16 个共享工具（所有角色可用） |
+| `backend/mcp_tools/agent.py` | 19 个 Agent 专属工具 |
+| `backend/mcp_tools/mate.py` | 7 个 First Mate 专属工具 |
+| `backend/mcp_tools/tester.py` | 7 个 Tester 专属工具 |
+| `backend/mcp_tools/registrar.py` | 6 个 Registrar 专属工具 |
+| `backend/tests/test_mcp_modularization.py` | 模块化验证测试套件（8 个测试用例） |
+
+#### 变更文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/mcp_server_unified.py` | 重写为 123 行入口文件：保留认证/装饰器/启动逻辑，移除所有工具定义 |
+
+#### 删除文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/mcp_server.py` | 旧版 Agent MCP Server（功能已合并） |
+| `backend/mcp_server_mate.py` | 旧版 Mate MCP Server（功能已合并） |
+| `backend/mcp_server_tester.py` | 旧版 Tester MCP Server（功能已合并） |
+| `backend/mcp_server_registrar.py` | 旧版 Registrar MCP Server（功能已合并） |
+
+#### 架构改进
+
+- **角色隔离**：每个角色的工具独立在 `mcp_tools/{role}.py` 中，避免 1700+ 行单文件
+- **注册模式**：各模块通过 `register_tools(mcp, require_role, safe_tool)` 函数注册，避免循环导入
+- **向后兼容**：MCP 客户端配置无需修改，统一入口保持 `mcp_server_unified.py` 不变
+
+---
+
 ## [1.1.0] - 2026-06-10
 
 ### 新增：容错机制、监控 API 与统一 MCP 健康检查

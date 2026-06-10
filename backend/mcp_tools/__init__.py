@@ -5,8 +5,6 @@
     register_all_tools(mcp, require_role, safe_tool)
 """
 
-from . import shared, agent, mate, tester, registrar
-
 
 def register_all_tools(mcp, require_role, safe_tool):
     """注册所有角色的 MCP 工具
@@ -16,6 +14,8 @@ def register_all_tools(mcp, require_role, safe_tool):
         require_role: 角色权限装饰器
         safe_tool: 错误处理装饰器
     """
+    from . import shared, agent, mate, tester, registrar
+    
     shared.register_tools(mcp, require_role, safe_tool)
     agent.register_tools(mcp, require_role, safe_tool)
     mate.register_tools(mcp, require_role, safe_tool)

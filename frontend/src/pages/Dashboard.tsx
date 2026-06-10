@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Row, Col, Card, Statistic, List, Tag, Spin, Timeline, Progress, Select, Empty } from "antd";
 import {
   BugOutlined,
@@ -15,11 +15,12 @@ import {
   PauseCircleOutlined,
   MessageOutlined,
 } from "@ant-design/icons";
-import { dashboardApi } from "../api/dashboard";
-import { statsApi } from "../api/stats";
-import type { DashboardData } from "../api";
-import type { AgentProductivity, PlanCompletion } from "../api/stats";
 import { useProject } from "../hooks/useProject";
+import { useDashboard } from "../hooks/useDashboard";
+import LoadingState from "../components/ui/LoadingState";
+import ErrorState from "../components/ui/ErrorState";
+import { queryClient } from "../queries/queryClient";
+import { dashboardKeys } from "../queries/dashboardQueries";
 import AgentActivityPanel from "../components/AgentActivityPanel";
 
 const actionIcons: Record<string, React.ReactNode> = {
@@ -44,34 +45,28 @@ const actionLabels: Record<string, string> = {
 
 
 export default function Dashboard() {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [productivity, setProductivity] = useState<AgentProductivity | null>(null);
-  const [planCompletion, setPlanCompletion] = useState<PlanCompletion | null>(null);
   const [period, setPeriod] = useState<string>("all");
   const { currentProject } = useProject();
+  const { data, isLoading, error } = useDashboard(currentProject?.id, period);
 
-  useEffect(() => {
-    if (!currentProject) return;
-    const fetch = async () => {
-      setLoading(true);
-      try {
-        const [dashboardRes, prodRes, planRes] = await Promise.all([
-          dashboardApi.get({ project_id: currentProject.id }),
-          statsApi.agentProductivity(currentProject.id, period),
-          statsApi.planCompletion(currentProject.id),
-        ]);
-        setData(dashboardRes.data);
-        setProductivity(prodRes);
-        setPlanCompletion(planRes);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch();
-  }, [currentProject, period]);
+  if (isLoading) {
+    return <LoadingState message="加载 Dashboard..." />;
+  }
 
-  if (loading || !data) return <Spin size="large" style={{ display: "block", margin: "100px auto" }} />;
+  if (error) {
+    return (
+      <ErrorState
+        error={error}
+        onRetry={() =>
+          queryClient.invalidateQueries({ queryKey: dashboardKeys.all })
+        }
+      />
+    );
+  }
+
+  if (!data) {
+    return <Empty description="暂无数据" />;
+  }
 
   const priorityColor: Record<string, string> = {
     P0: "red",
@@ -91,7 +86,7 @@ export default function Dashboard() {
 
   const actorColorMap: Record<string, string> = {};
   const barColors = ["#1890ff", "#52c41a", "#722ed1", "#fa8c16", "#eb2f96", "#13c2c2"];
-  productivity?.agents.forEach((a, i) => {
+  data.productivity?.agents.forEach((a, i) => {
     actorColorMap[a.actor] = barColors[i % barColors.length];
   });
 
@@ -107,7 +102,7 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="P0 紧急"
-              value={data.issues.p0}
+              value={data.dashboard.issues.p0}
               valueStyle={{ color: "#cf1322" }}
               prefix={<BugOutlined />}
             />
@@ -117,7 +112,7 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="P1 高优"
-              value={data.issues.p1}
+              value={data.dashboard.issues.p1}
               valueStyle={{ color: "#fa8c16" }}
               prefix={<BugOutlined />}
             />
@@ -127,7 +122,7 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="进行中"
-              value={data.issues.in_progress}
+              value={data.dashboard.issues.in_progress}
               valueStyle={{ color: "#1890ff" }}
               prefix={<ClockCircleOutlined />}
             />
@@ -137,7 +132,7 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="已暂缓"
-              value={data.issues.deferred}
+              value={data.dashboard.issues.deferred}
               valueStyle={{ color: "#faad14" }}
               prefix={<PauseCircleOutlined />}
             />
@@ -147,14 +142,14 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="AI 发现"
-              value={data.issues.ai_agent}
+              value={data.dashboard.issues.ai_agent}
               prefix={<RobotOutlined />}
             />
           </Card>
         </Col>
         <Col span={4}>
           <Card>
-            <Statistic title="总 Issues" value={data.issues.total} prefix={<BugOutlined />} />
+            <Statistic title="总 Issues" value={data.dashboard.issues.total} prefix={<BugOutlined />} />
           </Card>
         </Col>
       </Row>
@@ -172,7 +167,7 @@ export default function Dashboard() {
               </Select>
             }
           >
-            {productivity && productivity.agents.length > 0 ? (
+            {data.productivity && data.productivity.agents.length > 0 ? (
               <div>
                 <div style={{ marginBottom: 12, fontSize: 12, color: "#999" }}>
                   <span style={{ display: "inline-block", width: 10, height: 10, background: "#1890ff", borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} />
@@ -181,8 +176,8 @@ export default function Dashboard() {
                   完成
                 </div>
                 {(() => {
-                  const maxVal = Math.max(...productivity.agents.flatMap((a) => [a.created, a.completed]), 1);
-                  return productivity.agents.map((agent) => (
+                  const maxVal = Math.max(...data.productivity.agents.flatMap((a) => [a.created, a.completed]), 1);
+                  return data.productivity.agents.map((agent) => (
                     <div key={agent.actor} style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
                         <Tag color={actorColorMap[agent.actor] || "blue"}>{agent.actor}</Tag>
@@ -212,21 +207,21 @@ export default function Dashboard() {
         </Col>
         <Col span={10}>
           <Card title="Plan 完成率">
-            {planCompletion && planCompletion.total_plans > 0 ? (
+            {data.planCompletion && data.planCompletion.total_plans > 0 ? (
               <div>
                 <div style={{ textAlign: "center", marginBottom: 16 }}>
                   <Progress
                     type="circle"
-                    percent={planCompletion.overall_completion_rate}
-                    format={() => `${planCompletion.overall_completion_rate}%`}
+                    percent={data.planCompletion.overall_completion_rate}
+                    format={() => `${data.planCompletion.overall_completion_rate}%`}
                     size={100}
                   />
                   <div style={{ marginTop: 8, fontSize: 13, color: "#666" }}>
-                    {planCompletion.total_done_items} / {planCompletion.total_items} 项已完成
+                    {data.planCompletion.total_done_items} / {data.planCompletion.total_items} 项已完成
                   </div>
                 </div>
                 <div style={{ maxHeight: 200, overflowY: "auto" }}>
-                  {planCompletion.plans.slice(0, 5).map((plan) => (
+                  {data.planCompletion.plans.slice(0, 5).map((plan) => (
                     <div key={plan.id} style={{ marginBottom: 8 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                         <span>{plan.title}</span>
@@ -250,10 +245,10 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="待审批计划"
-              value={data.plans.pending_approval}
-              valueStyle={{ color: data.plans.pending_approval > 0 ? "#cf1322" : undefined }}
+              value={data.dashboard.plans.pending_approval}
+              valueStyle={{ color: data.dashboard.plans.pending_approval > 0 ? "#cf1322" : undefined }}
               prefix={<ProjectOutlined />}
-              suffix={`/ ${data.plans.total}`}
+              suffix={`/ ${data.dashboard.plans.total}`}
             />
           </Card>
         </Col>
@@ -261,9 +256,9 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="活跃计划"
-              value={data.plans.active}
+              value={data.dashboard.plans.active}
               prefix={<ProjectOutlined />}
-              suffix={`/ ${data.plans.total}`}
+              suffix={`/ ${data.dashboard.plans.total}`}
             />
           </Card>
         </Col>
@@ -271,13 +266,13 @@ export default function Dashboard() {
           <Card>
             <Statistic
               title="服务器状态"
-              value={data.servers.active}
+              value={data.dashboard.servers.active}
               prefix={<CloudServerOutlined />}
               suffix={
                 <span style={{ fontSize: 14 }}>
-                  <Tag color="success">{data.servers.active} 正常</Tag>
-                  {data.servers.maintenance > 0 && <Tag color="warning">{data.servers.maintenance} 维护</Tag>}
-                  {data.servers.offline > 0 && <Tag color="error">{data.servers.offline} 离线</Tag>}
+                  <Tag color="success">{data.dashboard.servers.active} 正常</Tag>
+                  {data.dashboard.servers.maintenance > 0 && <Tag color="warning">{data.dashboard.servers.maintenance} 维护</Tag>}
+                  {data.dashboard.servers.offline > 0 && <Tag color="error">{data.dashboard.servers.offline} 离线</Tag>}
                 </span>
               }
             />
@@ -288,12 +283,12 @@ export default function Dashboard() {
       {/* 列表区域 */}
       <Row gutter={16}>
         <Col span={8}>
-          <Card title="待审批计划" extra={data.pending_plans.length > 0 ? <Tag color="red">需处理</Tag> : null}>
-            {data.pending_plans.length === 0 ? (
+          <Card title="待审批计划" extra={data.dashboard.pending_plans.length > 0 ? <Tag color="red">需处理</Tag> : null}>
+            {data.dashboard.pending_plans.length === 0 ? (
               <div style={{ color: "#999", textAlign: "center", padding: 24 }}>暂无待审批计划</div>
             ) : (
               <List
-                dataSource={data.pending_plans}
+                dataSource={data.dashboard.pending_plans}
                 renderItem={(plan) => (
                   <List.Item>
                     <List.Item.Meta
@@ -324,7 +319,7 @@ export default function Dashboard() {
         <Col span={8}>
           <Card title="最近 Issues">
             <List
-              dataSource={data.recent_issues}
+              dataSource={data.dashboard.recent_issues}
               renderItem={(issue) => (
                 <List.Item>
                   <List.Item.Meta
@@ -349,12 +344,12 @@ export default function Dashboard() {
         </Col>
         <Col span={8}>
           <Card title="最近活动">
-            {data.recent_activities.length === 0 ? (
+            {data.dashboard.recent_activities.length === 0 ? (
               <div style={{ color: "#999", textAlign: "center", padding: 24 }}>暂无活动</div>
             ) : (
               <Timeline
                 mode="left"
-                items={data.recent_activities.map((log) => ({
+                items={data.dashboard.recent_activities.map((log) => ({
                   dot: actionIcons[log.action] || <EditOutlined />,
                   label: new Date(log.created_at).toLocaleString("zh-CN", {
                     month: "short",

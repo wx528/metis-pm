@@ -9,7 +9,7 @@ import {
 } from "@ant-design/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { workflowsApi } from "../api/workflows";
-import type { Workflow, WorkflowRun } from "../api/workflows";
+import type { Workflow } from "../api/workflows";
 import { useProject } from "../hooks/useProject";
 import { useWorkflows } from "../hooks/useWorkflows";
 import LoadingState from "../components/ui/LoadingState";

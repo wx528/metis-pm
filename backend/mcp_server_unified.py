@@ -37,27 +37,15 @@ mcp = FastMCP("project-manager")
 ROLES = {"agent", "mate", "tester", "registrar", "admin"}
 
 
-def get_role_by_password(password: str) -> str:
-    passwords = os.environ.get("AGENT_PASSWORDS", "")
-    for entry in passwords.split(","):
-        if ":" not in entry:
-            continue
-        identity, pwd = entry.strip().split(":", 1)
-        if pwd == password:
-            identity_lower = identity.lower()
-            if "mate" in identity_lower:
-                return "mate"
-            if "tester" in identity_lower:
-                return "tester"
-            if "registrar" in identity_lower:
-                return "registrar"
-            return "agent"
-    return "unknown"
-
-
 async def _current_role() -> str:
+    """通过后端 API 验证密码并获取角色"""
+    from src.settings import settings
     pwd = _get_password()
-    return get_role_by_password(pwd)
+    identity = settings.resolve_identity(pwd)
+    if identity:
+        _, role = identity
+        return role
+    return "unknown"
 
 
 def require_role(*roles):

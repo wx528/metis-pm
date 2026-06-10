@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 
 from src.core.dependencies import get_db
 from src.routes.auth import get_current_user
@@ -17,6 +17,7 @@ from src.models.activity_log import ActivityLog
 from src.models.comment import Comment
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+public_router = APIRouter()
 
 
 @router.get("/system")
@@ -32,12 +33,12 @@ async def get_system_metrics(
     # 1. Issue 统计
     issues_query = select(
         func.count(Issue.id).label("total"),
-        func.sum(func.case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
-        func.sum(func.case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
-        func.sum(func.case((Issue.status == IssueStatus.REVIEW, 1), else_=0)).label("review"),
-        func.sum(func.case((Issue.status == IssueStatus.CLOSED, 1), else_=0)).label("closed"),
-        func.sum(func.case((Issue.priority == IssuePriority.P0, 1), else_=0)).label("p0"),
-        func.sum(func.case((Issue.priority == IssuePriority.P1, 1), else_=0)).label("p1"),
+        func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+        func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
+        func.sum(case((Issue.status == IssueStatus.REVIEW, 1), else_=0)).label("review"),
+        func.sum(case((Issue.status == IssueStatus.CLOSED, 1), else_=0)).label("closed"),
+        func.sum(case((Issue.priority == IssuePriority.P0, 1), else_=0)).label("p0"),
+        func.sum(case((Issue.priority == IssuePriority.P1, 1), else_=0)).label("p1"),
     )
     issues_result = await db.execute(issues_query)
     issues_row = issues_result.one()
@@ -57,9 +58,9 @@ async def get_system_metrics(
     # 3. Plan 统计
     plans_query = select(
         func.count(Plan.id).label("total"),
-        func.sum(func.case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending"),
-        func.sum(func.case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
-        func.sum(func.case((Plan.status == PlanStatus.COMPLETED, 1), else_=0)).label("completed"),
+        func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending"),
+        func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
+        func.sum(case((Plan.status == PlanStatus.COMPLETED, 1), else_=0)).label("completed"),
     )
     plans_result = await db.execute(plans_query)
     plans_row = plans_result.one()
@@ -108,4 +109,102 @@ async def get_system_metrics(
         "collaboration": {
             "handovers_24h": handover_count.scalar() or 0,
         },
+    }
+
+
+@router.get("/stuck-workflows")
+async def get_stuck_workflows(
+    hours: int = Query(24, ge=1, le=168),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """检测卡住的工作流：长时间未变更状态的 Issue/Plan
+    
+    检测规则：
+    - Issue 处于 in_progress/review 状态超过 N 小时未变更
+    - Plan 处于 pending_approval/active 状态超过 N 小时未变更
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    threshold = now - timedelta(hours=hours)
+    
+    # 1. 卡住的 Issue：状态为 in_progress 或 review，且最近更新时间早于 threshold
+    stuck_issues_query = select(Issue).where(
+        Issue.status.in_([IssueStatus.IN_PROGRESS, IssueStatus.REVIEW]),
+        Issue.updated_at <= threshold,
+    ).order_by(Issue.updated_at)
+    
+    stuck_issues_result = await db.execute(stuck_issues_query)
+    stuck_issues = stuck_issues_result.scalars().all()
+    
+    # 2. 卡住的 Plan：pending_approval 或 active 且长时间未更新
+    stuck_plans_query = select(Plan).where(
+        Plan.status.in_([PlanStatus.PENDING_APPROVAL, PlanStatus.ACTIVE]),
+        Plan.updated_at <= threshold,
+    ).order_by(Plan.updated_at)
+    
+    stuck_plans_result = await db.execute(stuck_plans_query)
+    stuck_plans = stuck_plans_result.scalars().all()
+    
+    def format_stuck_duration(updated_at):
+        if not updated_at:
+            return "未知"
+        # 统一为 offset-aware 后再相减
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        delta = now - updated_at
+        hours = delta.total_seconds() / 3600
+        if hours < 24:
+            return f"{hours:.1f} 小时"
+        else:
+            days = hours / 24
+            return f"{days:.1f} 天"
+    
+    return {
+        "threshold_hours": hours,
+        "timestamp": now.isoformat(),
+        "stuck_issues": [
+            {
+                "id": issue.id,
+                "title": issue.title,
+                "status": issue.status,
+                "priority": issue.priority,
+                "assignee": issue.assignee,
+                "updated_at": issue.updated_at.isoformat() if issue.updated_at else None,
+                "stuck_duration": format_stuck_duration(issue.updated_at),
+            }
+            for issue in stuck_issues
+        ],
+        "stuck_plans": [
+            {
+                "id": plan.id,
+                "title": plan.title,
+                "status": plan.status,
+                "proposed_by": plan.proposed_by,
+                "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+                "stuck_duration": format_stuck_duration(plan.updated_at),
+            }
+            for plan in stuck_plans
+        ],
+        "total_stuck": len(stuck_issues) + len(stuck_plans),
+    }
+
+
+@public_router.get("/health")
+async def health_check(
+    db: AsyncSession = Depends(get_db),
+):
+    """服务健康检查（无需认证，供 Docker/K8s 使用）"""
+    try:
+        # 检查数据库连接
+        from sqlalchemy import text
+        await db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "database": db_status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }

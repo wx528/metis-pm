@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -187,12 +188,83 @@ async def _run_migrations(conn):
             logger.warning(f"Failed to add comment_type to comments: {e}")
 
 
+async def _check_stuck_workflows():
+    """后台任务：定期检测卡住的工作流并发送通知"""
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from src.core.database import AsyncSessionLocal
+    from src.core.notification import create_notification
+    from src.models.issue import Issue, IssueStatus
+    from src.models.plan import Plan, PlanStatus
+    from src.models.notification import NotificationType
+    
+    while True:
+        try:
+            await asyncio.sleep(3600)  # 每小时检查一次
+            
+            async with AsyncSessionLocal() as db:
+                now = datetime.now(timezone.utc)
+                threshold = now - timedelta(hours=24)
+                
+                # 检测卡住的 Issue（in_progress/review 超过 24 小时）
+                stuck_issues_result = await db.execute(
+                    select(Issue).where(
+                        Issue.status.in_([IssueStatus.IN_PROGRESS, IssueStatus.REVIEW]),
+                        Issue.updated_at <= threshold,
+                    )
+                )
+                stuck_issues = stuck_issues_result.scalars().all()
+                
+                for issue in stuck_issues:
+                    await create_notification(
+                        db,
+                        recipient="admin",
+                        type=NotificationType.TASK_FAILED,
+                        title=f"⚠️ Issue #{issue.id} 已卡住 {issue.status} 超过 24 小时",
+                        body=f"{issue.title}\n负责人: {issue.assignee or '未分配'}\n请检查工作流是否阻塞。",
+                        entity_type="issue",
+                        entity_id=issue.id,
+                    )
+                
+                # 检测卡住的 Plan（pending_approval 超过 24 小时）
+                stuck_plans_result = await db.execute(
+                    select(Plan).where(
+                        Plan.status == PlanStatus.PENDING_APPROVAL,
+                        Plan.updated_at <= threshold,
+                    )
+                )
+                stuck_plans = stuck_plans_result.scalars().all()
+                
+                for plan in stuck_plans:
+                    await create_notification(
+                        db,
+                        recipient="admin",
+                        type=NotificationType.APPROVAL_NEEDED,
+                        title=f"⏰ Plan '{plan.title}' 等待审批超过 24 小时",
+                        body=f"由 {plan.proposed_by} 提议，请及时审批。",
+                        entity_type="plan",
+                        entity_id=plan.id,
+                    )
+                
+                if stuck_issues or stuck_plans:
+                    logger.info(f"Stuck workflow check: {len(stuck_issues)} issues, {len(stuck_plans)} plans")
+                    
+        except Exception as e:
+            logger.error(f"Stuck workflow check failed: {e}")
+            await asyncio.sleep(3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _run_migrations(conn)
+    
+    # 启动后台任务：检测卡住的工作流
+    task = asyncio.create_task(_check_stuck_workflows())
     yield
+    task.cancel()
 
 
 app = FastAPI(

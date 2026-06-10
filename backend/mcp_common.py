@@ -58,17 +58,43 @@ async def _login(password: str = "") -> str:
         return _token_cache[key]["token"]
 
 
-async def _api_request(method: str, url: str, *, max_retries: int = 1, **kwargs) -> httpx.Response:
+import asyncio
+
+
+async def _api_request(method: str, url: str, *, max_retries: int = 3, **kwargs) -> httpx.Response:
+    """API 请求（带重试和指数退避）
+    
+    自动处理：
+    - 401 Token 过期：清缓存重登录
+    - 连接错误：指数退避重试
+    - 超时：最多重试 3 次
+    """
     password = _get_password()
     headers = kwargs.pop("headers", None) or await get_headers()
-    async with httpx.AsyncClient() as client:
-        resp = await client.request(method, url, headers=headers, **kwargs)
-        if resp.status_code == 401 and max_retries > 0:
-            key = _cache_key(password)
-            _token_cache.pop(key, None)
-            headers = await get_headers()
-            resp = await client.request(method, url, headers=headers, **kwargs)
-        return resp
+    
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.request(method, url, headers=headers, **kwargs)
+                
+                # Token 过期，清缓存重试
+                if resp.status_code == 401 and attempt < max_retries - 1:
+                    key = _cache_key(password)
+                    _token_cache.pop(key, None)
+                    headers = await get_headers()
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                    
+                return resp
+                
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            if attempt < max_retries - 1:
+                wait_time = 1.0 * (2 ** attempt)  # 指数退避：1s, 2s, 4s
+                await asyncio.sleep(wait_time)
+                continue
+            raise  # 重试耗尽，抛出异常
+            
+    return resp  # type: ignore
 
 
 async def get_headers() -> dict:

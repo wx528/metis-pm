@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.1.0] - 2026-06-10
+
+### 新增：容错机制、监控 API 与统一 MCP 健康检查
+
+提升系统健壮性，新增后台任务自动检测卡住的工作流，提供系统监控 Dashboard 数据，统一 MCP Server 增加健康检查与重试机制。
+
+#### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/src/routes/monitoring.py` | 系统监控 API：健康检查、系统指标、卡住工作流检测 |
+| `backend/tests/test_fault_tolerance.py` | 容错机制测试套件（6 个测试用例） |
+
+#### 变更文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/main.py` | 启动后台任务 `_check_stuck_workflows`，每小时检测并通知卡住的 Issue/Plan |
+| `backend/mcp_common.py` | `_api_request` 增加指数退避重试（最多 3 次）、Token 过期自动刷新、连接/超时错误处理 |
+| `backend/mcp_server_unified.py` | 新增 `safe_tool` 装饰器（捕获异常防止 MCP 崩溃）、`check_connection` 健康检查工具 |
+| `backend/src/routes/__init__.py` | 注册 `monitoring` 路由（公共路由 + 认证路由） |
+| `docker-compose.yml` | unified MCP Server 增加 `healthcheck` 配置 |
+
+#### API 端点
+
+| 端点 | 认证 | 说明 |
+|------|------|------|
+| `GET /api/v1/monitoring/health` | 否 | 健康检查，返回数据库状态 |
+| `GET /api/v1/monitoring/system` | 是 | 系统指标：Issue/Plan 统计、今日活动、Agent 活跃度 |
+| `GET /api/v1/monitoring/stuck-workflows` | 是 | 检测卡住的工作流，支持 `hours` 参数 |
+
+#### MCP 工具
+
+| 工具 | 说明 |
+|------|------|
+| `check_connection` | 测试 MCP Server 与后端 API 的连接状态 |
+
+---
+
 ## [1.0.0] - 2026-05-28
 
 ### 里程碑：v1.0.0 正式版

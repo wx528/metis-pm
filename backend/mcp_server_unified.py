@@ -75,6 +75,47 @@ def require_role(*roles):
     return decorator
 
 
+def safe_tool(func):
+    """工具函数错误处理装饰器：捕获异常，防止 MCP Server 崩溃"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except httpx.ConnectError as e:
+            return f"❌ 后端 API 连接失败：{e}。请检查后端服务是否正常运行。"
+        except httpx.TimeoutException as e:
+            return f"❌ 后端 API 请求超时：{e}。请稍后重试。"
+        except Exception as e:
+            import traceback
+            return f"❌ 工具执行出错：{type(e).__name__}: {str(e)}\n请稍后重试或联系管理员。"
+    return wrapper
+
+
+# ═══════════════════════════════════════════════════════
+#  健康检查工具
+# ═══════════════════════════════════════════════════════
+
+@mcp.tool()
+@safe_tool
+async def check_connection() -> str:
+    """测试 MCP Server 与后端 API 的连接是否正常"""
+    try:
+        headers = await get_headers()
+    except RuntimeError as e:
+        return f"ERROR: {e}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/auth/me", headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            return f"Connected OK. Identity: {data.get('sub', '?')} (role={data.get('role', '?')})"
+        elif resp.status_code == 401:
+            key = _cache_key(_get_password())
+            _token_cache.pop(key, None)
+            return "ERROR: Token invalid or expired (401). Will re-login on next call."
+        else:
+            return f"ERROR: API returned {resp.status_code}. Is the backend running?"
+
+
 # ═══════════════════════════════════════════════════════
 #  共享工具 / 常量
 # ═══════════════════════════════════════════════════════

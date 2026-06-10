@@ -14,6 +14,10 @@ class WorkflowStepCreate(BaseModel):
     sort_order: int = 0
     timeout_seconds: int = 300
     on_failure: OnFailure = OnFailure.ABORT
+    condition: Optional[str] = None
+    next_step_id: Optional[int] = None
+    else_step_id: Optional[int] = None
+    parallel_group: Optional[str] = None
 
 
 class WorkflowStepRead(BaseModel):
@@ -25,6 +29,10 @@ class WorkflowStepRead(BaseModel):
     sort_order: int
     timeout_seconds: int
     on_failure: str
+    condition: Optional[str] = None
+    next_step_id: Optional[int] = None
+    else_step_id: Optional[int] = None
+    parallel_group: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:

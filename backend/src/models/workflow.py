@@ -73,6 +73,13 @@ class WorkflowStep(Base):
     sort_order = Column(Integer, default=0)
     timeout_seconds = Column(Integer, default=300)  # 超时秒数，默认 5 分钟
     on_failure = Column(EnumColumn(OnFailure), default=OnFailure.ABORT)
+    
+    # 新增：工作流灵活性字段
+    condition = Column(Text, nullable=True)  # 条件表达式，如 "context.status == 'failed'"
+    next_step_id = Column(Integer, ForeignKey("workflow_steps.id"), nullable=True)  # 条件为真时的下一步
+    else_step_id = Column(Integer, ForeignKey("workflow_steps.id"), nullable=True)  # 条件为假时的下一步
+    parallel_group = Column(String(50), nullable=True)  # 并行组标识（同组步骤并行执行）
+    
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     workflow = relationship("Workflow", back_populates="steps")

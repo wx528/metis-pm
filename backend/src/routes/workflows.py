@@ -64,6 +64,10 @@ async def create_workflow(
             sort_order=step_data.sort_order or i,
             timeout_seconds=step_data.timeout_seconds,
             on_failure=step_data.on_failure,
+            condition=step_data.condition,
+            next_step_id=step_data.next_step_id,
+            else_step_id=step_data.else_step_id,
+            parallel_group=step_data.parallel_group,
         )
         db.add(step)
 
@@ -132,6 +136,81 @@ async def get_workflow_run(run_id: int, db: AsyncSession = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="Workflow run not found")
     return run
+
+
+# ── Workflow Templates (must be before /{workflow_id}) ────────────────────────────
+
+WORKFLOW_TEMPLATES = {
+    "dev_review_test": {
+        "name": "开发→审查→测试→完成",
+        "description": "标准软件开发流程",
+        "trigger": "manual",
+        "steps": [
+            {"step_type": "create_issue", "name": "创建开发任务", "sort_order": 0},
+            {"step_type": "wait_approval", "name": "代码审查", "sort_order": 1},
+            {"step_type": "create_issue", "name": "创建测试任务", "sort_order": 2, "condition": "context.approval_result == 'approved'"},
+            {"step_type": "notify", "name": "通知完成", "sort_order": 3},
+        ]
+    },
+    "urgent_bug": {
+        "name": "紧急 Bug 修复",
+        "description": "P0/P1 Bug 快速修复流程",
+        "trigger": "on_issue_created",
+        "trigger_config": {"priority": "P0"},
+        "steps": [
+            {"step_type": "create_issue", "name": "紧急修复", "sort_order": 0},
+            {"step_type": "notify", "name": "通知测试", "sort_order": 1, "parallel_group": "notify"},
+            {"step_type": "notify", "name": "通知 PM", "sort_order": 2, "parallel_group": "notify"},
+            {"step_type": "wait_approval", "name": "验证修复", "sort_order": 3},
+        ]
+    }
+}
+
+
+@router.get("/templates")
+async def list_templates():
+    """获取预置工作流模板列表"""
+    return [
+        {"id": key, "name": template["name"], "description": template["description"]}
+        for key, template in WORKFLOW_TEMPLATES.items()
+    ]
+
+
+@router.post("/from-template/{template_id}", response_model=WorkflowReadWithSteps, status_code=201)
+async def create_from_template(
+    template_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_role("admin", "agent")),
+):
+    """从模板创建工作流"""
+    if template_id not in WORKFLOW_TEMPLATES:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    template = WORKFLOW_TEMPLATES[template_id]
+    workflow = Workflow(
+        name=template["name"],
+        description=template["description"],
+        trigger=template["trigger"],
+        trigger_config=template.get("trigger_config"),
+        status="active",
+        created_by=user["sub"],
+    )
+    db.add(workflow)
+    await db.flush()
+
+    for step_data in template["steps"]:
+        step = WorkflowStep(workflow_id=workflow.id, **step_data)
+        db.add(step)
+
+    await db.commit()
+    await db.refresh(workflow)
+
+    # 重新查询以获取 steps
+    result = await db.execute(
+        select(Workflow).where(Workflow.id == workflow.id).options(selectinload(Workflow.steps))
+    )
+    workflow = result.scalar_one()
+    return workflow
 
 
 @router.get("/{workflow_id}", response_model=WorkflowReadWithSteps)
@@ -219,6 +298,10 @@ async def add_workflow_step(
         sort_order=data.sort_order,
         timeout_seconds=data.timeout_seconds,
         on_failure=data.on_failure,
+        condition=data.condition,
+        next_step_id=data.next_step_id,
+        else_step_id=data.else_step_id,
+        parallel_group=data.parallel_group,
     )
     db.add(step)
     await db.commit()
@@ -289,3 +372,6 @@ async def resume_workflow_run(
     engine = WorkflowEngine(db)
     run = await engine.resume(run, approved=approved, approved_by=user["sub"])
     return run
+
+
+

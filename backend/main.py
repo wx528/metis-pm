@@ -201,6 +201,22 @@ async def _run_migrations(conn):
         except Exception as e:
             logger.warning(f"Failed to add read_at to comments: {e}")
 
+    # Phase 10: workflow_steps 添加条件分支字段
+    result = await conn.execute(text("PRAGMA table_info(workflow_steps)"))
+    step_cols = {row[1] for row in result.fetchall()}
+    for col, col_type in [
+        ("condition", "TEXT"),
+        ("next_step_id", "INTEGER"),
+        ("else_step_id", "INTEGER"),
+        ("parallel_group", "VARCHAR(50)"),
+    ]:
+        if col not in step_cols:
+            try:
+                await conn.execute(text(f"ALTER TABLE workflow_steps ADD COLUMN {col} {col_type}"))
+                logger.info(f"Added {col} column to workflow_steps")
+            except Exception as e:
+                logger.warning(f"Failed to add {col} to workflow_steps: {e}")
+
 
 async def _check_stuck_workflows():
     """后台任务：定期检测卡住的工作流并发送通知"""

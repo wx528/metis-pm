@@ -1,14 +1,20 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  Table, Button, Tag, Space, Modal, Form, Input, Select, message, Spin,
+  Table, Button, Tag, Space, Modal, Form, Input, Select, message,
   Card, Steps, Timeline, Empty, Descriptions, Popconfirm,
 } from "antd";
 import {
   PlusOutlined, PlayCircleOutlined, ThunderboltOutlined,
   CheckCircleOutlined, CloseCircleOutlined,
 } from "@ant-design/icons";
-import { workflowsApi, type Workflow, type WorkflowRun } from "../api/workflows";
+import { useQueryClient } from "@tanstack/react-query";
+import { workflowsApi } from "../api/workflows";
+import type { Workflow, WorkflowRun } from "../api/workflows";
 import { useProject } from "../hooks/useProject";
+import { useWorkflows } from "../hooks/useWorkflows";
+import LoadingState from "../components/ui/LoadingState";
+import ErrorState from "../components/ui/ErrorState";
+import { workflowKeys } from "../queries/workflowQueries";
 
 const TRIGGER_LABELS: Record<string, string> = {
   on_issue_created: "Issue 创建时",
@@ -50,34 +56,15 @@ const RUN_STATUS_COLORS: Record<string, string> = {
 
 export default function Workflows() {
   const { currentProject } = useProject();
-  const [loading, setLoading] = useState(true);
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [runs, setRuns] = useState<WorkflowRun[]>([]);
+  const { data, isLoading, error } = useWorkflows(currentProject?.id);
+  const queryClient = useQueryClient();
   const [selectedWf, setSelectedWf] = useState<Workflow | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm();
   const msgApi = message;
 
-  const fetch = async () => {
-    if (!currentProject) return;
-    setLoading(true);
-    try {
-      const [wfRes, runRes] = await Promise.all([
-        workflowsApi.list({ project_id: currentProject.id }),
-        workflowsApi.listRuns({ limit: 20 }),
-      ]);
-      setWorkflows(wfRes);
-      setRuns(runRes.filter((r) => {
-        // 过滤当前项目的 runs
-        const wf = wfRes.find((w) => w.id === r.workflow_id);
-        return wf !== undefined;
-      }));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetch(); }, [currentProject]);
+  const workflows = data?.workflows || [];
+  const runs = data?.runs || [];
 
   const handleCreate = async () => {
     try {
@@ -93,7 +80,7 @@ export default function Workflows() {
       msgApi.success("工作流创建成功");
       setCreateOpen(false);
       form.resetFields();
-      fetch();
+      queryClient.invalidateQueries({ queryKey: workflowKeys.all });
     } catch {}
   };
 
@@ -101,7 +88,7 @@ export default function Workflows() {
     try {
       const run = await workflowsApi.trigger(id);
       msgApi.success(`已触发! Run #${run.id} (${run.status})`);
-      fetch();
+      queryClient.invalidateQueries({ queryKey: workflowKeys.all });
     } catch {
       msgApi.error("触发失败");
     }
@@ -111,7 +98,7 @@ export default function Workflows() {
     try {
       await workflowsApi.resume(runId, approved);
       msgApi.success(approved ? "已通过审批" : "已拒绝");
-      fetch();
+      queryClient.invalidateQueries({ queryKey: workflowKeys.all });
     } catch {
       msgApi.error("操作失败");
     }
@@ -122,13 +109,24 @@ export default function Workflows() {
       await workflowsApi.delete(id);
       msgApi.success("已删除");
       setSelectedWf(null);
-      fetch();
+      queryClient.invalidateQueries({ queryKey: workflowKeys.all });
     } catch {
       msgApi.error("删除失败");
     }
   };
 
-  if (loading) return <Spin size="large" style={{ display: "block", margin: "100px auto" }} />;
+  if (isLoading) {
+    return <LoadingState message="加载工作流..." />;
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        error={error}
+        onRetry={() => queryClient.invalidateQueries({ queryKey: workflowKeys.all })}
+      />
+    );
+  }
 
   return (
     <div>

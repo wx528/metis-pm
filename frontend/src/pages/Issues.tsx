@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from "antd";
 import { PlusOutlined, RobotOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { issuesApi } from "../api/issues";
-import { milestonesApi } from "../api/milestones";
-import type { Issue, Milestone } from "../api";
+import type { Issue } from "../api";
 import { useProject } from "../hooks/useProject";
+import { useIssues } from "../hooks/useIssues";
+import LoadingState from "../components/ui/LoadingState";
+import ErrorState from "../components/ui/ErrorState";
+import { queryClient } from "../queries/queryClient";
+import { issueKeys } from "../queries/issueQueries";
 
 const { Option } = Select;
 
@@ -37,41 +41,17 @@ const typeColors: Record<string, string> = {
 export default function Issues() {
   const navigate = useNavigate();
   const { currentProject } = useProject();
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [filters, setFilters] = useState<Record<string, any>>({});
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [sortBy, setSortBy] = useState<string>("created_at_desc");
 
-  const fetchIssues = async () => {
-    setLoading(true);
-    try {
-      const params: Record<string, any> = { ...filters, skip: (page - 1) * pageSize, limit: pageSize, sort_by: sortBy };
-      if (currentProject) params.project_id = currentProject.id;
-      const res = await issuesApi.list(params);
-      setIssues(res.data.items);
-      setTotal(res.data.total);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchMilestones = async () => {
-    const params: Record<string, any> = {};
-    if (currentProject) params.project_id = currentProject.id;
-    const res = await milestonesApi.list(params);
-    setMilestones(res.data);
-  };
-
-  useEffect(() => {
-    fetchIssues();
-    fetchMilestones();
-  }, [filters, page, pageSize, sortBy, currentProject]);
+  const { data, isLoading, error } = useIssues(currentProject?.id, filters, page, pageSize, sortBy);
+  const issues = data?.items || [];
+  const milestones = data?.milestones || [];
+  const total = data?.total || 0;
 
   const handleCreate = async (values: any) => {
     try {
@@ -81,7 +61,7 @@ export default function Issues() {
       message.success("创建成功");
       setModalOpen(false);
       form.resetFields();
-      fetchIssues();
+      queryClient.invalidateQueries({ queryKey: issueKeys.all });
     } catch {
       message.error("创建失败");
     }
@@ -91,11 +71,24 @@ export default function Issues() {
     try {
       await issuesApi.remove(id);
       message.success("删除成功");
-      fetchIssues();
+      queryClient.invalidateQueries({ queryKey: issueKeys.all });
     } catch {
       message.error("删除失败");
     }
   };
+
+  if (isLoading) {
+    return <LoadingState message="加载中..." />;
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        error={error}
+        onRetry={() => queryClient.invalidateQueries({ queryKey: issueKeys.all })}
+      />
+    );
+  }
 
   const columns = [
     {
@@ -225,7 +218,7 @@ export default function Issues() {
         rowKey="id"
         columns={columns}
         dataSource={issues}
-        loading={loading}
+        loading={isLoading}
         pagination={{
           current: page,
           pageSize: pageSize,

@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm, Progress } from "antd";
 import { PlusOutlined, CheckOutlined, CloseOutlined, RobotOutlined, TeamOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { plansApi } from "../api/plans";
-import type { Plan } from "../api";
+import type { Plan } from "../api/plans";
 import { useProject } from "../hooks/useProject";
+import { usePlans } from "../hooks/usePlans";
+import LoadingState from "../components/ui/LoadingState";
+import ErrorState from "../components/ui/ErrorState";
+import { queryClient } from "../queries/queryClient";
+import { planKeys } from "../queries/planQueries";
 
 const { Option } = Select;
 
@@ -19,26 +24,22 @@ const statusColors: Record<string, string> = {
 export default function Plans() {
   const navigate = useNavigate();
   const { currentProject } = useProject();
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
+  const { data: plans, isLoading, error } = usePlans(currentProject?.id);
 
-  const fetch = async () => {
-    setLoading(true);
-    try {
-      const params: Record<string, any> = {};
-      if (currentProject) params.project_id = currentProject.id;
-      const res = await plansApi.list(params);
-      setPlans(res.data);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (isLoading) {
+    return <LoadingState message="加载 Plans..." />;
+  }
 
-  useEffect(() => {
-    fetch();
-  }, [currentProject]);
+  if (error) {
+    return (
+      <ErrorState
+        error={error}
+        onRetry={() => queryClient.invalidateQueries({ queryKey: planKeys.all })}
+      />
+    );
+  }
 
   const handleCreate = async (values: any) => {
     try {
@@ -48,7 +49,7 @@ export default function Plans() {
       message.success("创建成功");
       setModalOpen(false);
       form.resetFields();
-      fetch();
+      queryClient.invalidateQueries({ queryKey: planKeys.all });
     } catch {
       message.error("创建失败");
     }
@@ -58,7 +59,7 @@ export default function Plans() {
     try {
       await plansApi.approve(id);
       message.success("审批通过");
-      fetch();
+      queryClient.invalidateQueries({ queryKey: planKeys.all });
     } catch {
       message.error("审批失败");
     }
@@ -74,7 +75,7 @@ export default function Plans() {
         try {
           await plansApi.reject(id);
           message.success("已拒绝");
-          fetch();
+          queryClient.invalidateQueries({ queryKey: planKeys.all });
         } catch {
           message.error("操作失败");
         }
@@ -86,7 +87,7 @@ export default function Plans() {
     try {
       await plansApi.remove(id);
       message.success("删除成功");
-      fetch();
+      queryClient.invalidateQueries({ queryKey: planKeys.all });
     } catch {
       message.error("删除失败");
     }
@@ -182,7 +183,7 @@ export default function Plans() {
         </Button>
       </div>
 
-      <Table rowKey="id" columns={columns} dataSource={plans} loading={loading} pagination={{ pageSize: 20 }} />
+      <Table rowKey="id" columns={columns} dataSource={plans || []} loading={isLoading} pagination={{ pageSize: 20 }} />
 
       <Modal title="新建 Plan" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()}>
         <Form form={form} onFinish={handleCreate} layout="vertical">

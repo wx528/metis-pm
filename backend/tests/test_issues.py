@@ -31,7 +31,7 @@ async def sample_issue(client, auth_headers):
         "title": "示例 Bug",
         "description": "这是一个测试问题",
         "issue_type": "bug",
-        "priority": "high",
+        "priority": "P1",
         "assignee": "dev1",
         "labels": "backend,urgent",
     }, headers=auth_headers)
@@ -45,7 +45,7 @@ async def test_create_issue(client, auth_headers):
         "title": "新功能需求",
         "description": "需要添加导出功能",
         "issue_type": "feature",
-        "priority": "medium",
+        "priority": "P2",
     }, headers=auth_headers)
     assert resp.status_code == 201
     data = resp.json()

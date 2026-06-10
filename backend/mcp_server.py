@@ -35,6 +35,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp_common import (
     API_BASE, _api_request, _current_sub, get_headers,
     PasswordMiddleware, AGENT_PASSWORD,
+    _cache_key, _token_cache, _get_password,
 )
 
 mcp = FastMCP("project-manager")

@@ -18,15 +18,23 @@ async def client():
 
 
 @pytest.fixture
-async def sample_issue(client):
+async def auth_headers(client):
+    resp = await client.post("/api/v1/auth/login", json={"password": "testadmin"})
+    assert resp.status_code == 200
+    token = resp.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def sample_issue(client, auth_headers):
     resp = await client.post("/api/v1/issues", json={
         "title": "示例 Bug",
         "description": "这是一个测试问题",
         "issue_type": "bug",
-        "priority": "high",
+        "priority": "P1",
         "assignee": "dev1",
         "labels": "backend,urgent",
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 201
     return resp.json()["id"]
 
@@ -35,30 +43,30 @@ class TestIssuePagination:
     """分页测试"""
 
     @pytest.mark.asyncio
-    async def test_pagination_skip_limit(self, client):
+    async def test_pagination_skip_limit(self, client, auth_headers):
         # 创建 5 条数据
         for i in range(5):
             await client.post("/api/v1/issues", json={
                 "title": f"Issue {i}",
                 "issue_type": "task",
-                "priority": "low",
-            })
+                "priority": "P3",
+            }, headers=auth_headers)
 
-        resp = await client.get("/api/v1/issues?skip=0&limit=2")
+        resp = await client.get("/api/v1/issues?skip=0&limit=2", headers=auth_headers)
         data = resp.json()
         assert data["total"] >= 5
         assert len(data["items"]) == 2
 
-        resp = await client.get("/api/v1/issues?skip=2&limit=2")
+        resp = await client.get("/api/v1/issues?skip=2&limit=2", headers=auth_headers)
         data = resp.json()
         assert len(data["items"]) == 2
 
     @pytest.mark.asyncio
-    async def test_pagination_limit_boundary(self, client):
-        resp = await client.get("/api/v1/issues?limit=100")
+    async def test_pagination_limit_boundary(self, client, auth_headers):
+        resp = await client.get("/api/v1/issues?limit=100", headers=auth_headers)
         assert resp.status_code == 200
 
-        resp = await client.get("/api/v1/issues?limit=101")
+        resp = await client.get("/api/v1/issues?limit=101", headers=auth_headers)
         assert resp.status_code == 422  # 超过最大值
 
 
@@ -66,36 +74,36 @@ class TestIssueFilters:
     """筛选测试"""
 
     @pytest.mark.asyncio
-    async def test_filter_by_priority(self, client, sample_issue):
-        resp = await client.get("/api/v1/issues?priority=high")
+    async def test_filter_by_priority(self, client, auth_headers, sample_issue):
+        resp = await client.get("/api/v1/issues?priority=P1", headers=auth_headers)
         data = resp.json()
-        assert all(i["priority"] == "high" for i in data["items"])
+        assert all(i["priority"] == "P1" for i in data["items"])
 
     @pytest.mark.asyncio
-    async def test_filter_by_status(self, client, sample_issue):
-        resp = await client.get("/api/v1/issues?status=open")
+    async def test_filter_by_status(self, client, auth_headers, sample_issue):
+        resp = await client.get("/api/v1/issues?status=open", headers=auth_headers)
         data = resp.json()
         assert all(i["status"] == "open" for i in data["items"])
 
     @pytest.mark.asyncio
-    async def test_filter_by_assignee(self, client, sample_issue):
-        resp = await client.get("/api/v1/issues?assignee=dev1")
+    async def test_filter_by_assignee(self, client, auth_headers, sample_issue):
+        resp = await client.get("/api/v1/issues?assignee=dev1", headers=auth_headers)
         data = resp.json()
         assert all(i["assignee"] == "dev1" for i in data["items"])
 
     @pytest.mark.asyncio
-    async def test_search_by_title(self, client, sample_issue):
-        resp = await client.get("/api/v1/issues?search=示例")
+    async def test_search_by_title(self, client, auth_headers, sample_issue):
+        resp = await client.get("/api/v1/issues?search=示例", headers=auth_headers)
         data = resp.json()
         assert any("示例" in i["title"] for i in data["items"])
 
     @pytest.mark.asyncio
-    async def test_combined_filters(self, client, sample_issue):
-        resp = await client.get("/api/v1/issues?issue_type=bug&priority=high&status=open")
+    async def test_combined_filters(self, client, auth_headers, sample_issue):
+        resp = await client.get("/api/v1/issues?issue_type=bug&priority=P1&status=open", headers=auth_headers)
         data = resp.json()
         for item in data["items"]:
             assert item["issue_type"] == "bug"
-            assert item["priority"] == "high"
+            assert item["priority"] == "P1"
             assert item["status"] == "open"
 
 
@@ -103,14 +111,14 @@ class TestIssueTypes:
     """所有问题类型测试"""
 
     @pytest.mark.asyncio
-    async def test_create_all_issue_types(self, client):
+    async def test_create_all_issue_types(self, client, auth_headers):
         types = ["bug", "feature", "task", "improvement", "documentation"]
         for t in types:
             resp = await client.post("/api/v1/issues", json={
                 "title": f"{t} test",
                 "issue_type": t,
-                "priority": "medium",
-            })
+                "priority": "P2",
+            }, headers=auth_headers)
             assert resp.status_code == 201, f"Failed for type {t}"
             assert resp.json()["issue_type"] == t
 
@@ -119,25 +127,25 @@ class TestIssueNotFound:
     """404 测试"""
 
     @pytest.mark.asyncio
-    async def test_get_nonexistent_issue(self, client):
-        resp = await client.get("/api/v1/issues/99999")
+    async def test_get_nonexistent_issue(self, client, auth_headers):
+        resp = await client.get("/api/v1/issues/99999", headers=auth_headers)
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_update_nonexistent_issue(self, client):
-        resp = await client.put("/api/v1/issues/99999", json={"title": "updated"})
+    async def test_update_nonexistent_issue(self, client, auth_headers):
+        resp = await client.put("/api/v1/issues/99999", json={"title": "updated"}, headers=auth_headers)
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_delete_nonexistent_issue(self, client):
-        resp = await client.delete("/api/v1/issues/99999")
+    async def test_delete_nonexistent_issue(self, client, auth_headers):
+        resp = await client.delete("/api/v1/issues/99999", headers=auth_headers)
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_add_comment_to_nonexistent_issue(self, client):
+    async def test_add_comment_to_nonexistent_issue(self, client, auth_headers):
         resp = await client.post("/api/v1/issues/99999/comments", json={
             "content": "comment",
-        })
+        }, headers=auth_headers)
         assert resp.status_code == 404
 
 
@@ -145,22 +153,22 @@ class TestIssueStatusTransitions:
     """状态流转测试"""
 
     @pytest.mark.asyncio
-    async def test_status_open_to_in_progress(self, client, sample_issue):
+    async def test_status_open_to_in_progress(self, client, auth_headers, sample_issue):
         resp = await client.put(f"/api/v1/issues/{sample_issue}", json={
             "status": "in_progress",
-        })
+        }, headers=auth_headers)
         assert resp.json()["status"] == "in_progress"
 
     @pytest.mark.asyncio
-    async def test_status_in_progress_to_review(self, client, sample_issue):
-        await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "in_progress"})
-        resp = await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "review"})
+    async def test_status_in_progress_to_review(self, client, auth_headers, sample_issue):
+        await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "in_progress"}, headers=auth_headers)
+        resp = await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "review"}, headers=auth_headers)
         assert resp.json()["status"] == "review"
 
     @pytest.mark.asyncio
-    async def test_status_review_to_closed(self, client, sample_issue):
-        await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "review"})
-        resp = await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "closed"})
+    async def test_status_review_to_closed(self, client, auth_headers, sample_issue):
+        await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "review"}, headers=auth_headers)
+        resp = await client.put(f"/api/v1/issues/{sample_issue}", json={"status": "closed"}, headers=auth_headers)
         assert resp.json()["status"] == "closed"
 
 
@@ -168,24 +176,24 @@ class TestIssueResponseSchema:
     """响应格式回归测试"""
 
     @pytest.mark.asyncio
-    async def test_list_response_has_total_and_items(self, client, sample_issue):
-        resp = await client.get("/api/v1/issues")
+    async def test_list_response_has_total_and_items(self, client, auth_headers, sample_issue):
+        resp = await client.get("/api/v1/issues", headers=auth_headers)
         data = resp.json()
         assert set(data.keys()) == {"total", "items"}
         assert isinstance(data["total"], int)
         assert isinstance(data["items"], list)
 
     @pytest.mark.asyncio
-    async def test_issue_has_required_fields(self, client, sample_issue):
-        resp = await client.get(f"/api/v1/issues/{sample_issue}")
+    async def test_issue_has_required_fields(self, client, auth_headers, sample_issue):
+        resp = await client.get(f"/api/v1/issues/{sample_issue}", headers=auth_headers)
         data = resp.json()
         required = ["id", "title", "issue_type", "status", "priority", "created_at", "updated_at"]
         for field in required:
             assert field in data, f"Missing field: {field}"
 
     @pytest.mark.asyncio
-    async def test_issue_detail_has_comments(self, client, sample_issue):
-        resp = await client.get(f"/api/v1/issues/{sample_issue}")
+    async def test_issue_detail_has_comments(self, client, auth_headers, sample_issue):
+        resp = await client.get(f"/api/v1/issues/{sample_issue}", headers=auth_headers)
         data = resp.json()
         assert "comments" in data
         assert isinstance(data["comments"], list)

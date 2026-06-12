@@ -273,3 +273,235 @@ def _get_period_start(period: str) -> Optional[datetime]:
     elif period == "month":
         return now - timedelta(days=30)
     return None  # all
+
+
+@router.get("/burndown")
+async def burndown_data(
+    project_id: int = Query(...),
+    days: int = Query(30, ge=7, le=90),
+    db: AsyncSession = Depends(get_db),
+):
+    """燃尽图数据：统计每日剩余Issue数量"""
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=days)
+
+    # 获取项目创建时间作为起点
+    project_query = select(Issue.created_at).where(
+        Issue.project_id == project_id
+    ).order_by(Issue.created_at.asc()).limit(1)
+    project_result = await db.execute(project_query)
+    first_issue = project_result.scalar()
+
+    if not first_issue:
+        return {
+            "days": days,
+            "total_issues": 0,
+            "data": [],
+            "ideal": [],
+        }
+
+    # 获取项目起始日期
+    project_start = first_issue.replace(hour=0, minute=0, second=0, microsecond=0)
+    if project_start < start_date:
+        project_start = start_date
+
+    # 计算总Issue数
+    total_query = select(func.count(Issue.id)).where(
+        Issue.project_id == project_id,
+        Issue.created_at >= project_start,
+    )
+    total_result = await db.execute(total_query)
+    total_issues = total_result.scalar() or 0
+
+    # 获取每天关闭的Issue数量
+    closed_query = select(
+        func.date(Issue.closed_at).label("date"),
+        func.count(Issue.id).label("count"),
+    ).where(
+        Issue.project_id == project_id,
+        Issue.status == IssueStatus.CLOSED,
+        Issue.closed_at.isnot(None),
+        Issue.closed_at >= project_start,
+    ).group_by(
+        func.date(Issue.closed_at)
+    ).order_by(func.date(Issue.closed_at))
+
+    closed_result = await db.execute(closed_query)
+    closed_by_date = {str(row.date): row.count for row in closed_result.all()}
+
+    # 构建燃尽数据
+    data = []
+    ideal = []
+    cumulative_closed = 0
+
+    for i in range((now - project_start).days + 1):
+        current_date = project_start + timedelta(days=i)
+        date_str = current_date.strftime("%Y-%m-%d")
+
+        # 累计关闭数
+        cumulative_closed += closed_by_date.get(date_str, 0)
+        remaining = max(0, total_issues - cumulative_closed)
+
+        data.append({
+            "date": date_str,
+            "remaining": remaining,
+        })
+
+        # 理想燃尽线
+        if i == 0:
+            ideal.append({"date": date_str, "remaining": total_issues})
+        else:
+            days_elapsed = i
+            days_total = (now - project_start).days
+            if days_total > 0:
+                ideal_remaining = max(0, total_issues * (1 - days_elapsed / days_total))
+                ideal.append({"date": date_str, "remaining": round(ideal_remaining, 1)})
+            else:
+                ideal.append({"date": date_str, "remaining": 0})
+
+    return {
+        "days": days,
+        "total_issues": total_issues,
+        "data": data,
+        "ideal": ideal,
+    }
+
+
+@router.get("/health")
+async def project_health(
+    project_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """项目健康度评估：多维度指标计算"""
+
+    # 1. Issue 健康度
+    # - 关闭率
+    issue_stats_query = select(
+        func.count(Issue.id).label("total"),
+        func.sum(case((Issue.status == IssueStatus.CLOSED, 1), else_=0)).label("closed"),
+        func.sum(case((Issue.status == IssueStatus.OPEN, 1), else_=0)).label("open"),
+        func.sum(case((Issue.status == IssueStatus.IN_PROGRESS, 1), else_=0)).label("in_progress"),
+        func.sum(case((Issue.priority == IssuePriority.P0, 1), else_=0)).label("p0"),
+        func.sum(case((Issue.priority == IssuePriority.P1, 1), else_=0)).label("p1"),
+    ).where(Issue.project_id == project_id)
+
+    issue_result = await db.execute(issue_stats_query)
+    issue_stats = issue_result.one()
+
+    total_issues = issue_stats.total or 0
+    closed_issues = issue_stats.closed or 0
+    open_issues = issue_stats.open or 0
+    in_progress = issue_stats.in_progress or 0
+    p0_issues = issue_stats.p0 or 0
+    p1_issues = issue_stats.p1 or 0
+
+    # Issue 关闭率得分 (0-100)
+    close_rate = (closed_issues / total_issues * 100) if total_issues > 0 else 100
+    issue_score = min(100, close_rate)
+
+    # P0/P1 未关闭扣分
+    critical_unresolved = p0_issues + p1_issues
+    if critical_unresolved > 0:
+        issue_score = max(0, issue_score - critical_unresolved * 5)
+
+    # 2. Plan 健康度
+    plan_stats_query = select(
+        func.count(Plan.id).label("total"),
+        func.sum(case((Plan.status == PlanStatus.COMPLETED, 1), else_=0)).label("completed"),
+        func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
+        func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending"),
+    ).where(Plan.project_id == project_id)
+
+    plan_result = await db.execute(plan_stats_query)
+    plan_stats = plan_result.one()
+
+    total_plans = plan_stats.total or 0
+    completed_plans = plan_stats.completed or 0
+    pending_plans = plan_stats.pending or 0
+
+    # Plan 完成率得分
+    plan_close_rate = (completed_plans / total_plans * 100) if total_plans > 0 else 100
+    plan_score = min(100, plan_close_rate)
+
+    # 待审批Plan扣分
+    if pending_plans > 0:
+        plan_score = max(0, plan_score - pending_plans * 10)
+
+    # 3. 活跃度得分（基于最近7天活动）
+    recent_activity_query = select(func.count(ActivityLog.id)).where(
+        ActivityLog.project_id == project_id,
+        ActivityLog.created_at >= datetime.now(timezone.utc) - timedelta(days=7),
+    )
+    activity_result = await db.execute(recent_activity_query)
+    recent_activities = activity_result.scalar() or 0
+
+    # 活跃度得分：每天至少10个活动为满分
+    activity_score = min(100, recent_activities / 7 * 10)
+
+    # 4. 综合健康度
+    overall_score = round(
+        issue_score * 0.4 +
+        plan_score * 0.3 +
+        activity_score * 0.3
+    )
+
+    # 健康等级
+    if overall_score >= 80:
+        level = "excellent"
+        color = "#52c41a"
+    elif overall_score >= 60:
+        level = "good"
+        color = "#1890ff"
+    elif overall_score >= 40:
+        level = "warning"
+        color = "#faad14"
+    else:
+        level = "critical"
+        color = "#ff4d4f"
+
+    # 建议
+    suggestions = []
+    if p0_issues > 0:
+        suggestions.append(f"有 {p0_issues} 个 P0 紧急Issue待处理")
+    if pending_plans > 0:
+        suggestions.append(f"有 {pending_plans} 个Plan待审批")
+    if recent_activities < 10:
+        suggestions.append("最近7天活跃度较低")
+    if close_rate < 50 and total_issues > 10:
+        suggestions.append(f"Issue关闭率偏低 ({close_rate:.1f}%)")
+
+    return {
+        "overall_score": overall_score,
+        "level": level,
+        "color": color,
+        "dimensions": {
+            "issue": {
+                "score": round(issue_score, 1),
+                "details": {
+                    "total": total_issues,
+                    "closed": closed_issues,
+                    "open": open_issues,
+                    "in_progress": in_progress,
+                    "p0": p0_issues,
+                    "p1": p1_issues,
+                    "close_rate": round(close_rate, 1),
+                }
+            },
+            "plan": {
+                "score": round(plan_score, 1),
+                "details": {
+                    "total": total_plans,
+                    "completed": completed_plans,
+                    "pending": pending_plans,
+                    "close_rate": round(plan_close_rate, 1),
+                }
+            },
+            "activity": {
+                "score": round(activity_score, 1),
+                "details": {
+                    "recent_7days": recent_activities,
+                }
+            },
+        },
+        "suggestions": suggestions,
+    }

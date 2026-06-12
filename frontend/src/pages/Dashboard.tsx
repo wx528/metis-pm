@@ -16,6 +16,7 @@ import {
   PauseCircleOutlined,
   MessageOutlined,
 } from "@ant-design/icons";
+import { useQuery } from "@tanstack/react-query";
 import { useProject } from "../hooks/useProject";
 import { useDashboard } from "../hooks/useDashboard";
 import LoadingState from "../components/ui/LoadingState";
@@ -23,6 +24,9 @@ import ErrorState from "../components/ui/ErrorState";
 import { queryClient } from "../queries/queryClient";
 import { dashboardKeys } from "../queries/dashboardQueries";
 import AgentActivityPanel from "../components/AgentActivityPanel";
+import BurndownChart from "../components/BurndownChart";
+import ProjectHealth from "../components/ProjectHealth";
+import { api } from "../api/client";
 
 const actionIcons: Record<string, React.ReactNode> = {
   created: <PlusOutlined />,
@@ -50,6 +54,26 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { currentProject } = useProject();
   const { data, isLoading, error } = useDashboard(currentProject?.id, period);
+
+  // 获取燃尽图数据
+  const { data: burndownData } = useQuery({
+    queryKey: ["burndown", currentProject?.id],
+    queryFn: async () => {
+      const res = await api.get(`/stats/burndown?project_id=${currentProject?.id}&days=30`);
+      return res.data;
+    },
+    enabled: !!currentProject?.id,
+  });
+
+  // 获取健康度数据
+  const { data: healthData } = useQuery({
+    queryKey: ["health", currentProject?.id],
+    queryFn: async () => {
+      const res = await api.get(`/stats/health?project_id=${currentProject?.id}`);
+      return res.data;
+    },
+    enabled: !!currentProject?.id,
+  });
 
   if (isLoading) {
     return <LoadingState message="加载 Dashboard..." />;
@@ -282,6 +306,20 @@ export default function Dashboard() {
               }
             />
           </Card>
+        </Col>
+      </Row>
+
+      {/* 燃尽图 + 项目健康度 */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={14}>
+          <BurndownChart
+            actual={burndownData?.data || []}
+            ideal={burndownData?.ideal || []}
+            loading={!burndownData}
+          />
+        </Col>
+        <Col span={10}>
+          <ProjectHealth data={healthData} />
         </Col>
       </Row>
 

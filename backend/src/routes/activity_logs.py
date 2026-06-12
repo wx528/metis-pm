@@ -14,12 +14,13 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 @router.get("", response_model=List[ActivityLogRead])
 async def list_activity_logs(
     db: AsyncSession = Depends(get_db),
-    entity_type: Optional[str] = Query(None, description="issue | plan | plan_item | server | milestone"),
+    entity_type: Optional[str] = Query(None, description="issue | plan | plan_item | server | milestone | mcp_tool"),
     entity_id: Optional[int] = Query(None),
     actor: Optional[str] = Query(None, description="按操作者筛选"),
+    action: Optional[str] = Query(None, description="按动作筛选（如 MCP 工具名）"),
     limit: int = Query(50, ge=1, le=200),
 ):
-    """查询活动日志（支持按实体或操作者筛选）"""
+    """查询活动日志（支持按实体、操作者或动作筛选）"""
     query = select(ActivityLog).order_by(desc(ActivityLog.created_at))
     if entity_type and entity_id:
         query = query.where(ActivityLog.entity_type == entity_type, ActivityLog.entity_id == entity_id)
@@ -27,6 +28,8 @@ async def list_activity_logs(
         query = query.where(ActivityLog.entity_type == entity_type)
     if actor:
         query = query.where(ActivityLog.actor == actor)
+    if action:
+        query = query.where(ActivityLog.action == action)
     query = query.limit(limit)
     result = await db.execute(query)
     return result.scalars().all()

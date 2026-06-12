@@ -358,6 +358,61 @@ async def _recover_workflow_runs():
         logger.error(f"Workflow recovery failed: {e}")
 
 
+async def _collect_system_metrics():
+    """定期收集系统指标：SQLite 文件大小、消息队列深度"""
+    import os
+    from src.core.metrics import sqlite_wal_size_bytes, sqlite_db_size_bytes, message_queue_size, message_queue_dead_letter_size
+
+    while True:
+        try:
+            await asyncio.sleep(30)
+
+            # SQLite 文件大小
+            db_url = str(engine.url)
+            if "sqlite" in db_url:
+                db_path = db_url.split("///")[-1] if "///" in db_url else ""
+                if db_path and os.path.exists(db_path):
+                    sqlite_db_size_bytes.set(os.path.getsize(db_path))
+                    wal_path = db_path + "-wal"
+                    if os.path.exists(wal_path):
+                        sqlite_wal_size_bytes.set(os.path.getsize(wal_path))
+                    else:
+                        sqlite_wal_size_bytes.set(0)
+
+            # 消息队列深度
+            from src.core.database import AsyncSessionLocal
+            from sqlalchemy import text
+            async with AsyncSessionLocal() as db:
+                for status in ("pending", "processing"):
+                    result = await db.execute(text(
+                        "SELECT COUNT(*) FROM message_queue WHERE status = :status"
+                    ), {"status": status})
+                    count = result.scalar() or 0
+                    message_queue_size.labels(status=status).set(count)
+
+                dl_result = await db.execute(text("SELECT COUNT(*) FROM message_queue_dead_letter"))
+                message_queue_dead_letter_size.set(dl_result.scalar() or 0)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.debug(f"System metrics collection error: {e}")
+
+
+async def _daily_sqlite_backup():
+    """每 24 小时自动备份 SQLite 数据库"""
+    from src.core.database import backup_sqlite_db
+
+    while True:
+        try:
+            await asyncio.sleep(86400)  # 24 小时
+            await backup_sqlite_db()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"SQLite backup task error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
@@ -377,6 +432,8 @@ async def lifespan(app: FastAPI):
     tasks = [
         asyncio.create_task(_check_stuck_workflows()),
         asyncio.create_task(workflow_timeout_monitor()),
+        asyncio.create_task(_collect_system_metrics()),
+        asyncio.create_task(_daily_sqlite_backup()),
     ]
     yield
     

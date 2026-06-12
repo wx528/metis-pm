@@ -67,7 +67,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const startPolling = useCallback(() => {
     if (pollingIntervalRef.current) return;
     refreshUnreadCount();
-    pollingIntervalRef.current = setInterval(refreshUnreadCount, 30000);
+    // 轮询降级：SSE 断开时使用较长间隔（60秒），避免频繁请求
+    pollingIntervalRef.current = setInterval(refreshUnreadCount, 60000);
   }, [refreshUnreadCount]);
 
   const stopPolling = useCallback(() => {
@@ -114,6 +115,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           sseConnected.current = true;
           stopPolling();
           reconnectDelay = 1000;
+
+          // 心跳检测：45 秒无数据则重连
+          let lastDataTime = Date.now();
+          const heartbeatCheck = setInterval(() => {
+            if (Date.now() - lastDataTime > 45000) {
+              clearInterval(heartbeatCheck);
+              sseConnected.current = false;
+              startPolling();
+              abortController?.abort();
+              scheduleReconnect();
+            }
+          }, 15000);
+
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
 
@@ -124,11 +138,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               .read()
               .then(({ done, value }) => {
                 if (done) {
+                  clearInterval(heartbeatCheck);
                   sseConnected.current = false;
                   startPolling();
                   scheduleReconnect();
                   return;
                 }
+                lastDataTime = Date.now();
                 const text = decoder.decode(value, { stream: true });
                 // 解析 SSE 事件
                 const lines = text.split("\n");
@@ -159,6 +175,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 readChunk();
               })
               .catch(() => {
+                clearInterval(heartbeatCheck);
                 sseConnected.current = false;
                 startPolling();
                 scheduleReconnect();

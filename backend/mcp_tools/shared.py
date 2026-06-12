@@ -814,3 +814,62 @@ def register_tools(mcp, require_role, safe_tool):
             lines.append("  管理员暂未回复")
         lines.append(f"  创建: {d.get('created_at', '?')} | 更新: {d.get('updated_at', '?')}")
         return "\n".join(lines)
+
+    # ═══════════════════════════════════════════════════════
+    #  审计日志 (Audit)
+    # ═══════════════════════════════════════════════════════
+
+    @mcp.tool()
+    @require_role("admin")
+    @safe_tool
+    async def list_audit_logs(
+        entity_type: Optional[str] = None,
+        actor: Optional[str] = None,
+        action: Optional[str] = None,
+        limit: int = 50,
+    ) -> str:
+        """查看审计日志（仅 admin）。可查看 MCP 工具调用记录、操作历史等。
+
+        Args:
+            entity_type: 按实体类型筛选，如 mcp_tool, issue, plan 等
+            actor: 按操作者筛选（如 agent 名称）
+            action: 按动作筛选（如 MCP 工具名：create_issue, list_issues 等）
+            limit: 返回数量，默认 50
+
+        Returns:
+            审计日志列表
+        """
+        params = {"limit": limit}
+        if entity_type:
+            params["entity_type"] = entity_type
+        if actor:
+            params["actor"] = actor
+        if action:
+            params["action"] = action
+
+        resp = await _api_request("GET", f"{API_BASE}/activity-logs", params=params)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        items = resp.json()
+        if not items:
+            return "暂无审计日志。"
+        lines = [f"共 {len(items)} 条审计日志"]
+        for item in items[:30]:
+            new_val = item.get("new_value") or {}
+            if item["entity_type"] == "mcp_tool":
+                # MCP 工具调用审计
+                tool = new_val.get("tool", "?")
+                duration = new_val.get("duration_ms", "?")
+                success = "✅" if new_val.get("success") else "❌"
+                client_ip = new_val.get("client_ip", "")
+                ip_info = f" from {client_ip}" if client_ip else ""
+                lines.append(
+                    f"  #{item['id']} [{item['created_at'][:19]}] {success} {item['actor']} → {tool} "
+                    f"({duration}ms){ip_info}"
+                )
+            else:
+                lines.append(
+                    f"  #{item['id']} [{item['created_at'][:19]}] {item['actor']} → "
+                    f"{item['action']} on {item['entity_type']}#{item['entity_id']}"
+                )
+        return "\n".join(lines)

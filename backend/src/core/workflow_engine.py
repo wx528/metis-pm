@@ -18,6 +18,7 @@ from src.models.workflow import (
 )
 from src.models.notification import NotificationType
 from src.core.notification import create_notification
+from src.core.metrics import workflow_step_duration_seconds, workflow_step_total
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,17 @@ class WorkflowEngine:
             step_run.started_at = datetime.now(timezone.utc)
         if status in (StepRunStatus.COMPLETED, StepRunStatus.FAILED, StepRunStatus.SKIPPED):
             step_run.completed_at = datetime.now(timezone.utc)
+            # 记录步骤耗时指标
+            if step_run.started_at:
+                duration = (step_run.completed_at - step_run.started_at).total_seconds()
+                step_type = step_run.step.type.value if step_run.step else "unknown"
+                workflow_step_duration_seconds.labels(
+                    step_type=step_type, status=status.value
+                ).observe(duration)
+            workflow_step_total.labels(
+                step_type=step_run.step.type.value if step_run.step else "unknown",
+                status=status.value,
+            ).inc()
         await self.db.commit()
 
     # ─── 触发与恢复 ─────────────────────────────────────

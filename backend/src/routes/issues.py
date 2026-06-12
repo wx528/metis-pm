@@ -8,6 +8,7 @@ from src.core.dependencies import get_db
 from src.core.activity import log_activity
 from src.core.notification import create_notification
 from src.core.metrics import agent_operations_total, issue_transitions_total, handovers_total
+from src.core.debounce import debounce_check_or_raise
 from src.models.issue import Issue, IssueType, IssueStatus, IssuePriority, IssueSource
 from src.models.notification import NotificationType
 from src.models.comment import Comment
@@ -83,6 +84,8 @@ async def list_issues(
 
 @router.post("", response_model=IssueRead, status_code=201)
 async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), user: dict = Depends(require_role("admin", "agent", "tester"))):
+    # 防抖：10 秒内相同内容去重
+    debounce_check_or_raise("/api/v1/issues", data.model_dump_json().encode(), user["sub"])
     issue = Issue(**data.model_dump())
     if user["role"] == "tester":
         issue.source = IssueSource.USER

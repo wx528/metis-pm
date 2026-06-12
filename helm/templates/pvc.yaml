@@ -1,0 +1,40 @@
+{{- /*
+  PVC: SQLite 数据 + 备份（仅非 PostgreSQL 模式）
+*/ -}}
+{{- if not .Values.postgresql.enabled -}}
+{{- if .Values.persistence.sqlite.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "project-manager.fullname" . }}-sqlite
+  labels:
+    {{- include "project-manager.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.persistence.sqlite.storageClass }}
+  storageClassName: {{ .Values.persistence.sqlite.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.sqlite.size }}
+---
+{{- end -}}
+{{- if .Values.persistence.backup.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "project-manager.fullname" . }}-backup
+  labels:
+    {{- include "project-manager.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.persistence.backup.storageClass }}
+  storageClassName: {{ .Values.persistence.backup.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.backup.size }}
+{{- end -}}
+{{- end -}}

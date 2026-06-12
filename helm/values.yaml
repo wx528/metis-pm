@@ -1,0 +1,116 @@
+# ========================================
+# Project Manager System - Helm Values
+# ========================================
+#
+# 最小化部署（SQLite + 单副本）：
+#   helm install pm ./helm
+#
+# PostgreSQL + 多副本：
+#   helm install pm ./helm --set postgresql.enabled=true --set backend.replicaCount=2
+#
+
+# ─── 全局 ──────────────────────────────────────────────
+image:
+  registry: ""
+  pullPolicy: IfNotPresent
+
+# ─── 后端 API ──────────────────────────────────────────
+backend:
+  replicaCount: 1
+  image:
+    repository: project-manager-backend
+    tag: "1.3.0"
+  service:
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 15
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+
+# ─── MCP Server ────────────────────────────────────────
+mcp:
+  replicaCount: 1
+  image:
+    repository: project-manager-backend
+    tag: "1.3.0"
+  service:
+    port: 9000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# ─── 前端 (nginx) ──────────────────────────────────────
+frontend:
+  replicaCount: 1
+  image:
+    repository: project-manager-frontend
+    tag: "1.3.0"
+  service:
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ─── PostgreSQL（可选）─────────────────────────────────
+postgresql:
+  enabled: false
+  auth:
+    username: pm
+    password: CHANGE-ME
+    database: pm
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ─── 持久化 ────────────────────────────────────────────
+persistence:
+  sqlite:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  backup:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+
+# ─── 安全 ──────────────────────────────────────────────
+secretKey: "change-me-in-production"
+adminPassword: "change-me-in-production"
+agentPasswords: "trae:CHANGE-ME,first-mate:CHANGE-ME:mate,qa-tester:CHANGE-ME:tester"
+
+# ─── Ingress ───────────────────────────────────────────
+ingress:
+  enabled: false
+  className: ""
+  host: pm.example.com
+  tls: false
+  tlsSecretName: ""

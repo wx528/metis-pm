@@ -1,0 +1,70 @@
+{{- /*
+  Backend Deployment + Service
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "project-manager.fullname" . }}-backend
+  labels:
+    {{- include "project-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "project-manager.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "project-manager.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.image.registry }}{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: {{ include "project-manager.fullname" . }}-secret
+          env:
+            - name: CORS_ORIGINS
+              value: "http://{{ .Values.ingress.host }},http://localhost:8080"
+            - name: DEBUG
+              value: "false"
+          {{- if not .Values.postgresql.enabled }}
+          volumeMounts:
+            - name: sqlite-data
+              mountPath: /data
+            - name: backup-data
+              mountPath: /data/backups
+          {{- end }}
+          livenessProbe: {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
+          readinessProbe: {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
+          resources: {{- toYaml .Values.backend.resources | nindent 12 }}
+      {{- if not .Values.postgresql.enabled }}
+      volumes:
+        - name: sqlite-data
+          persistentVolumeClaim:
+            claimName: {{ include "project-manager.fullname" . }}-sqlite
+        - name: backup-data
+          persistentVolumeClaim:
+            claimName: {{ include "project-manager.fullname" . }}-backup
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "project-manager.fullname" . }}-backend
+  labels:
+    {{- include "project-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  selector:
+    {{- include "project-manager.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  ports:
+    - port: 8000
+      targetPort: 8000

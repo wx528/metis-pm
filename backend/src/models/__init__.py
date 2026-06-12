@@ -15,6 +15,7 @@ from src.models.workflow import (
 from src.models.agent_memory import AgentMemory
 from src.models.project_registration import ProjectRegistration, RegistrationStatus
 from src.models.feedback import Feedback, FeedbackCategory, FeedbackStatus
+from src.models.git_integration import GitIntegration, IssueCommitLink, PRPlanLink
 
 __all__ = [
     "Base",
@@ -32,4 +33,5 @@ __all__ = [
     "AgentMemory",
     "ProjectRegistration", "RegistrationStatus",
     "Feedback", "FeedbackCategory", "FeedbackStatus",
+    "GitIntegration", "IssueCommitLink", "PRPlanLink",
 ]

@@ -12,7 +12,7 @@ from src.core.database import engine, Base
 from src.routes import api_router
 from src.settings import settings
 from src.core.crypto import encrypt_value
-from src.core.message_queue import message_queue, create_message_queue_backup_table
+from src.core.message_queue import message_queue, create_message_queue_tables
 from src.core.workflow_timeout import workflow_timeout_monitor
 
 
@@ -287,17 +287,24 @@ async def _check_stuck_workflows():
 
 
 async def _recover_workflow_runs():
-    """启动时恢复未完成的 WorkflowRun（backend 重启后断点续传）"""
+    """启动时恢复未完成的 WorkflowRun（断点续传）
+
+    利用 WorkflowStepRun 记录，从最后成功步骤恢复：
+    - 已完成的步骤（step_run.status=completed）直接跳过
+    - 正在运行的步骤（step_run.status=running）重置为 pending 重新执行
+    - 未开始的步骤正常执行
+    """
     from src.core.database import AsyncSessionLocal
-    from src.models.workflow import WorkflowRun, WorkflowRunStatus, Workflow
+    from src.models.workflow import WorkflowRun, WorkflowRunStatus, Workflow, WorkflowStepRun, StepRunStatus
     from src.core.workflow_engine import WorkflowEngine
     from sqlalchemy.orm import selectinload
 
     try:
         async with AsyncSessionLocal() as db:
+            # 恢复 RUNNING 和 WAITING_APPROVAL 状态的 Run
             result = await db.execute(
                 select(WorkflowRun).where(
-                    WorkflowRun.status == WorkflowRunStatus.RUNNING
+                    WorkflowRun.status.in_([WorkflowRunStatus.RUNNING, WorkflowRunStatus.WAITING_APPROVAL])
                 ).options(
                     selectinload(WorkflowRun.workflow).selectinload(Workflow.steps)
                 )
@@ -309,7 +316,6 @@ async def _recover_workflow_runs():
 
             logger.info(f"Recovering {len(stuck_runs)} incomplete workflow run(s)")
 
-            engine = WorkflowEngine(db)
             for run in stuck_runs:
                 try:
                     workflow = run.workflow
@@ -320,7 +326,25 @@ async def _recover_workflow_runs():
                         run.completed_at = datetime.now(timezone.utc)
                         continue
 
-                    # 从当前步骤继续执行
+                    # WAITING_APPROVAL 状态不需要恢复执行，等待审批即可
+                    if run.status == WorkflowRunStatus.WAITING_APPROVAL:
+                        logger.info(f"WorkflowRun #{run.id} is waiting approval, skipping recovery")
+                        continue
+
+                    # 将 running 状态的 step_run 重置为 pending（可能崩溃中断了）
+                    step_run_result = await db.execute(
+                        select(WorkflowStepRun).where(
+                            WorkflowStepRun.run_id == run.id,
+                            WorkflowStepRun.status == StepRunStatus.RUNNING,
+                        )
+                    )
+                    for sr in step_run_result.scalars().all():
+                        sr.status = StepRunStatus.PENDING
+                        sr.started_at = None
+                    await db.commit()
+
+                    # 从当前步骤继续执行（已完成的步骤会被跳过）
+                    engine = WorkflowEngine(db)
                     await engine._execute_steps(run, workflow)
                     logger.info(f"Recovered WorkflowRun #{run.id}")
                 except Exception as e:
@@ -340,8 +364,8 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         await _run_migrations(conn)
     
-    # 创建消息队列备份表
-    await create_message_queue_backup_table()
+    # 创建消息队列表
+    await create_message_queue_tables()
     
     # 启动消息队列消费者
     await message_queue.start()

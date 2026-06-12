@@ -202,9 +202,141 @@ async def health_check(
         db_status = "ok"
     except Exception as e:
         db_status = f"error: {str(e)}"
-    
+
     return {
         "status": "ok" if db_status == "ok" else "degraded",
         "database": db_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ═══════════════════════════════════════════════════════
+#  死信队列管理
+# ═══════════════════════════════════════════════════════
+
+@router.get("/dead-letter")
+async def list_dead_letter_messages(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """查看死信队列消息"""
+    from sqlalchemy import text
+    import json
+
+    # 总数
+    count_result = await db.execute(text("SELECT COUNT(*) FROM message_queue_dead_letter"))
+    total = count_result.scalar() or 0
+
+    # 分页查询
+    result = await db.execute(text("""
+        SELECT id, payload, original_status, retry_count, error, moved_at
+        FROM message_queue_dead_letter
+        ORDER BY moved_at DESC
+        LIMIT :limit OFFSET :skip
+    """), {"limit": limit, "skip": skip})
+    rows = result.fetchall()
+
+    items = []
+    for row in rows:
+        msg_id, payload, orig_status, retry_count, error, moved_at = row
+        try:
+            parsed = json.loads(payload) if isinstance(payload, str) else payload
+        except Exception:
+            parsed = {"raw": payload}
+        items.append({
+            "id": msg_id,
+            "payload": parsed,
+            "original_status": orig_status,
+            "retry_count": retry_count,
+            "error": error,
+            "moved_at": moved_at.isoformat() if moved_at else None,
+        })
+
+    return {"total": total, "items": items}
+
+
+@router.post("/dead-letter/{msg_id}/retry")
+async def retry_dead_letter_message(
+    msg_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """重试死信消息：移回主队列"""
+    from sqlalchemy import text
+    import json
+
+    result = await db.execute(text(
+        "SELECT id, payload, retry_count FROM message_queue_dead_letter WHERE id = :id"
+    ), {"id": msg_id})
+    row = result.fetchone()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Dead letter message not found")
+
+    _, payload, retry_count = row
+
+    # 移回主队列，重置重试计数
+    await db.execute(text("""
+        INSERT INTO message_queue (payload, status, retry_count, created_at)
+        VALUES (:payload, 'pending', 0, :created_at)
+    """), {
+        "payload": payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    # 从死信表删除
+    await db.execute(text("DELETE FROM message_queue_dead_letter WHERE id = :id"), {"id": msg_id})
+    await db.commit()
+
+    return {"message": f"Dead letter message #{msg_id} moved back to queue", "retry_count": retry_count}
+
+
+@router.delete("/dead-letter/{msg_id}")
+async def delete_dead_letter_message(
+    msg_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """删除死信消息"""
+    from sqlalchemy import text
+
+    result = await db.execute(text(
+        "SELECT id FROM message_queue_dead_letter WHERE id = :id"
+    ), {"id": msg_id})
+    if not result.fetchone():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Dead letter message not found")
+
+    await db.execute(text("DELETE FROM message_queue_dead_letter WHERE id = :id"), {"id": msg_id})
+    await db.commit()
+    return {"message": f"Dead letter message #{msg_id} deleted"}
+
+
+@router.get("/queue-stats")
+async def get_queue_stats(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """消息队列统计"""
+    from sqlalchemy import text
+
+    # 主队列统计
+    main_result = await db.execute(text("""
+        SELECT status, COUNT(*) as cnt FROM message_queue GROUP BY status
+    """))
+    main_stats = {row[0]: row[1] for row in main_result.fetchall()}
+
+    # 死信数量
+    dead_result = await db.execute(text("SELECT COUNT(*) FROM message_queue_dead_letter"))
+    dead_count = dead_result.scalar() or 0
+
+    return {
+        "queue": {
+            "pending": main_stats.get("pending", 0),
+            "processing": main_stats.get("processing", 0),
+            "total": sum(main_stats.values()),
+        },
+        "dead_letter": dead_count,
     }

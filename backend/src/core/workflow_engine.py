@@ -1,4 +1,8 @@
-"""Phase 6 — 工作流引擎核心"""
+"""Phase 6 — 工作流引擎核心（步骤级持久化）
+
+每步执行前后实时写入 WorkflowStepRun 状态到数据库。
+backend 重启后，通过 _recover_workflow_runs 自动从最后成功步骤恢复。
+"""
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -9,8 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.models.workflow import (
-    Workflow, WorkflowStep, WorkflowRun,
-    WorkflowStatus, WorkflowRunStatus, StepType, OnFailure,
+    Workflow, WorkflowStep, WorkflowRun, WorkflowStepRun,
+    WorkflowStatus, WorkflowRunStatus, StepRunStatus, StepType, OnFailure,
 )
 from src.models.notification import NotificationType
 from src.core.notification import create_notification
@@ -23,10 +27,55 @@ RETRY_BASE_DELAY_SECONDS = 2  # 指数退避基础延迟
 
 
 class WorkflowEngine:
-    """轻量级工作流引擎：trigger → execute_steps → wait_approval → resume"""
+    """轻量级工作流引擎：trigger → execute_steps → wait_approval → resume
+
+    步骤级持久化：每步执行前创建 WorkflowStepRun(pending)，
+    执行中更新为 running，完成后更新为 completed/failed/skipped。
+    """
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ─── 步骤级状态管理 ─────────────────────────────────
+
+    async def _get_or_create_step_run(
+        self, run: WorkflowRun, step: WorkflowStep,
+    ) -> WorkflowStepRun:
+        """获取已有 step_run 或创建新的"""
+        result = await self.db.execute(
+            select(WorkflowStepRun).where(
+                WorkflowStepRun.run_id == run.id,
+                WorkflowStepRun.step_id == step.id,
+            )
+        )
+        step_run = result.scalar_one_or_none()
+        if step_run:
+            return step_run
+
+        step_run = WorkflowStepRun(
+            run_id=run.id,
+            step_id=step.id,
+            status=StepRunStatus.PENDING,
+        )
+        self.db.add(step_run)
+        await self.db.flush()
+        return step_run
+
+    async def _mark_step(self, step_run: WorkflowStepRun, status: StepRunStatus,
+                         result: dict = None, error: str = None):
+        """更新步骤执行状态并立即提交"""
+        step_run.status = status
+        if result is not None:
+            step_run.result = result
+        if error is not None:
+            step_run.error = error
+        if status == StepRunStatus.RUNNING:
+            step_run.started_at = datetime.now(timezone.utc)
+        if status in (StepRunStatus.COMPLETED, StepRunStatus.FAILED, StepRunStatus.SKIPPED):
+            step_run.completed_at = datetime.now(timezone.utc)
+        await self.db.commit()
+
+    # ─── 触发与恢复 ─────────────────────────────────────
 
     async def trigger(
         self,
@@ -46,7 +95,17 @@ class WorkflowEngine:
         await self.db.commit()
         await self.db.refresh(run)
 
-        # 异步执行步骤（简化版：同步执行到 wait 或完成）
+        # 为所有步骤创建 pending step_run
+        steps = sorted(workflow.steps, key=lambda s: s.sort_order)
+        for step in steps:
+            step_run = WorkflowStepRun(
+                run_id=run.id,
+                step_id=step.id,
+                status=StepRunStatus.PENDING,
+            )
+            self.db.add(step_run)
+        await self.db.commit()
+
         await self._execute_steps(run, workflow)
         return run
 
@@ -61,7 +120,6 @@ class WorkflowEngine:
             await self.db.commit()
             await self.db.refresh(run)
 
-            # 通知触发者
             await create_notification(
                 self.db,
                 recipient=run.triggered_by or "admin",
@@ -78,6 +136,27 @@ class WorkflowEngine:
         run.context = run.context or {}
         run.context["approval_result"] = "approved"
         run.context["approved_by"] = approved_by
+
+        # 标记 WAIT_APPROVAL 步骤的 step_run 为 COMPLETED
+        steps_result = await self.db.execute(
+            select(WorkflowStep).where(WorkflowStep.workflow_id == run.workflow_id)
+            .order_by(WorkflowStep.sort_order)
+        )
+        steps = steps_result.scalars().all()
+        if 0 <= run.current_step_index < len(steps):
+            approval_step = steps[run.current_step_index]
+            if approval_step.step_type == StepType.WAIT_APPROVAL:
+                sr_result = await self.db.execute(
+                    select(WorkflowStepRun).where(
+                        WorkflowStepRun.run_id == run.id,
+                        WorkflowStepRun.step_id == approval_step.id,
+                    )
+                )
+                approval_sr = sr_result.scalar_one_or_none()
+                if approval_sr:
+                    await self._mark_step(approval_sr, StepRunStatus.COMPLETED,
+                                          result={"approval_result": "approved", "approved_by": approved_by})
+
         run.current_step_index += 1  # 跳过 wait_approval 步骤
         run.status = WorkflowRunStatus.RUNNING
         await self.db.commit()
@@ -90,6 +169,8 @@ class WorkflowEngine:
         workflow = result.scalar_one()
         await self._execute_steps(run, workflow)
         return run
+
+    # ─── 步骤执行 ───────────────────────────────────────
 
     async def _execute_steps(self, run: WorkflowRun, workflow: Workflow) -> None:
         """执行工作流步骤（支持条件分支、并行执行）"""
@@ -105,12 +186,29 @@ class WorkflowEngine:
                 return
 
             current_step = steps[run.current_step_index]
+            step_run = await self._get_or_create_step_run(run, current_step)
+
+            # 已完成的步骤直接跳过（断点续传）
+            if step_run.status == StepRunStatus.COMPLETED:
+                # 将结果写入 context
+                if step_run.result:
+                    run.context = run.context or {}
+                    run.context[f"step_{current_step.id}_result"] = step_run.result
+                run.current_step_index += 1
+                await self.db.commit()
+                continue
+
+            # 已跳过的步骤也跳过
+            if step_run.status == StepRunStatus.SKIPPED:
+                run.current_step_index += 1
+                await self.db.commit()
+                continue
 
             # 检查条件
             if current_step.condition:
                 should_execute = self._evaluate_condition(current_step.condition, run.context)
                 if not should_execute:
-                    # 跳过此步骤，走 else 分支
+                    await self._mark_step(step_run, StepRunStatus.SKIPPED)
                     if current_step.else_step_id and current_step.else_step_id in steps_map:
                         next_step = steps_map[current_step.else_step_id]
                         run.current_step_index = steps.index(next_step)
@@ -126,7 +224,9 @@ class WorkflowEngine:
                 await self._execute_parallel_group(run, current_step, steps, steps_map, workflow)
             else:
                 # 串行执行单步
-                await self._execute_single_step(run, current_step, steps, workflow)
+                await self._execute_single_step(run, current_step, step_run, steps, workflow)
+
+    # ─── 条件评估 ────────────────────────────────────────
 
     # 支持的安全操作符
     _SAFE_OPS = {
@@ -141,19 +241,11 @@ class WorkflowEngine:
     }
 
     def _evaluate_condition(self, condition: str, context: dict) -> bool:
-        """评估条件表达式（安全子集，不使用 eval）
-
-        支持格式：
-        - 简单变量: "is_urgent"  → context["is_urgent"] 为真值
-        - 比较表达式: "priority == P0"  → context["priority"] == "P0"
-        - 包含检查: "tag in tags"  → context["tag"] in context["tags"]
-        - AND/OR 组合: "priority == P0 and is_urgent"
-        """
+        """评估条件表达式（安全子集，不使用 eval）"""
         if not condition:
             return True
         try:
             ctx = context or {}
-            # 支持 AND/OR 组合
             if " or " in condition.lower():
                 parts = self._split_logical(condition, "or")
                 return any(self._evaluate_condition(p.strip(), ctx) for p in parts)
@@ -161,21 +253,17 @@ class WorkflowEngine:
                 parts = self._split_logical(condition, "and")
                 return all(self._evaluate_condition(p.strip(), ctx) for p in parts)
 
-            # 支持 not 前缀
             cond = condition.strip()
             if cond.lower().startswith("not "):
                 return not self._evaluate_condition(cond[4:].strip(), ctx)
 
-            # 比较操作符
             for op_str, op_fn in self._SAFE_OPS.items():
-                # 从长操作符开始匹配，避免 >= 被 > 先匹配
                 parts = cond.split(f" {op_str} ", 1)
                 if len(parts) == 2:
                     left = self._resolve_value(parts[0].strip(), ctx)
                     right = self._resolve_value(parts[1].strip(), ctx)
                     return bool(op_fn(left, right))
 
-            # 简单变量：直接取布尔值
             val = self._resolve_value(cond, ctx)
             return bool(val)
         except Exception as e:
@@ -184,7 +272,6 @@ class WorkflowEngine:
 
     @staticmethod
     def _split_logical(expr: str, op: str) -> list[str]:
-        """按逻辑操作符拆分，忽略引号内的内容"""
         parts = []
         current = []
         i = 0
@@ -202,24 +289,19 @@ class WorkflowEngine:
 
     @staticmethod
     def _resolve_value(token: str, context: dict):
-        """解析值：先从 context 取，取不到则作为字面量"""
         if not token:
             return None
-        # 去除引号
         if (token.startswith('"') and token.endswith('"')) or \
            (token.startswith("'") and token.endswith("'")):
             return token[1:-1]
-        # 从 context 取
         if token in context:
             return context[token]
-        # 点号访问嵌套: "context.priority"
         if "." in token:
             parts = token.split(".", 1)
             if parts[0] in context:
                 val = context[parts[0]]
                 if isinstance(val, dict):
                     return val.get(parts[1])
-        # 数字字面量
         try:
             return int(token)
         except ValueError:
@@ -228,20 +310,38 @@ class WorkflowEngine:
             return float(token)
         except ValueError:
             pass
-        # 字符串字面量
         return token
+
+    # ─── 并行执行 ────────────────────────────────────────
 
     async def _execute_parallel_group(self, run: WorkflowRun, current_step: WorkflowStep, steps, steps_map, workflow: Workflow):
         """执行并行步骤组"""
         group = current_step.parallel_group
         group_steps = [s for s in steps if s.parallel_group == group]
 
+        # 标记所有步骤为 running
+        step_runs = []
+        for s in group_steps:
+            sr = await self._get_or_create_step_run(run, s)
+            if sr.status not in (StepRunStatus.COMPLETED, StepRunStatus.SKIPPED):
+                await self._mark_step(sr, StepRunStatus.RUNNING)
+            step_runs.append(sr)
+
         # 并行执行所有步骤
         tasks = [self._execute_step_logic(s, run, workflow) for s in group_steps]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 检查是否有失败
-        failures = [r for r in results if isinstance(r, Exception)]
+        # 处理结果
+        failures = []
+        for s, sr, r in zip(group_steps, step_runs, results):
+            if isinstance(r, Exception):
+                await self._mark_step(sr, StepRunStatus.FAILED, error=str(r))
+                failures.append(r)
+            else:
+                await self._mark_step(sr, StepRunStatus.COMPLETED, result=r)
+                run.context = run.context or {}
+                run.context[f"step_{s.id}_result"] = r
+
         if failures:
             logger.error(f"Parallel group {group} failed: {failures}")
             run.status = WorkflowRunStatus.FAILED
@@ -254,20 +354,34 @@ class WorkflowEngine:
         run.current_step_index = last_group_index + 1
         await self.db.commit()
 
-    async def _execute_single_step(self, run: WorkflowRun, step: WorkflowStep, steps, workflow: Workflow):
-        """执行单步（带超时控制）"""
+    # ─── 串行执行 ────────────────────────────────────────
+
+    async def _execute_single_step(self, run: WorkflowRun, step: WorkflowStep, step_run: WorkflowStepRun, steps, workflow: Workflow):
+        """执行单步（带超时控制 + 步骤级持久化 + 循环重试）
+
+        统一状态管理：不在 except 中提前标记 FAILED，
+        由 _handle_step_failure 统一决定最终状态（SKIP/RETRY/ABORT）。
+        """
+        # 标记为 running
+        await self._mark_step(step_run, StepRunStatus.RUNNING)
+
+        timeout = step.timeout_seconds or 300
+
         try:
-            timeout = step.timeout_seconds or 300
             result = await asyncio.wait_for(
                 self._execute_step(step, run, workflow),
                 timeout=timeout,
             )
 
             if step.step_type == StepType.WAIT_APPROVAL:
+                # WAIT_APPROVAL 不标记完成，等待 resume
                 run.status = WorkflowRunStatus.WAITING_APPROVAL
                 await self.db.commit()
                 await self.db.refresh(run)
                 return
+
+            # 标记步骤完成
+            await self._mark_step(step_run, StepRunStatus.COMPLETED, result=result)
 
             # 将步骤结果存入上下文
             run.context = run.context or {}
@@ -282,15 +396,11 @@ class WorkflowEngine:
 
             await self.db.commit()
 
-        except asyncio.TimeoutError:
-            logger.error(f"Workflow step {step.id} timed out after {step.timeout_seconds}s")
-            await self._handle_step_failure(
-                run, step,
-                TimeoutError(f"Step timed out after {step.timeout_seconds or 300}s"),
-                workflow,
-            )
-        except Exception as e:
-            await self._handle_step_failure(run, step, e, workflow)
+        except (asyncio.TimeoutError, Exception) as e:
+            error_msg = f"Step timed out after {timeout}s" if isinstance(e, asyncio.TimeoutError) else str(e)
+            logger.error(f"Workflow step {step.id} failed: {error_msg}")
+            # 不提前标记 FAILED，交给 _handle_step_failure 统一处理
+            await self._handle_step_failure(run, step, step_run, error_msg, steps, workflow)
 
     async def _execute_step_logic(self, step: WorkflowStep, run: WorkflowRun, workflow: Workflow):
         """执行步骤逻辑（不带状态管理，用于并行组，带超时）"""
@@ -300,26 +410,37 @@ class WorkflowEngine:
             timeout=timeout,
         )
 
-    async def _handle_step_failure(self, run: WorkflowRun, step: WorkflowStep, e: Exception, workflow: Workflow):
-        """处理步骤失败"""
-        logger.error(f"Workflow step {step.id} failed: {e}")
-        run.error_message = str(e)
+    # ─── 失败处理 ────────────────────────────────────────
+
+    async def _handle_step_failure(
+        self, run: WorkflowRun, step: WorkflowStep, step_run: WorkflowStepRun,
+        error_msg: str, steps, workflow: Workflow,
+    ):
+        """处理步骤失败 — 统一决定 step_run 最终状态，避免双重标记"""
+        run.error_message = error_msg
 
         if step.on_failure == OnFailure.ABORT:
+            await self._mark_step(step_run, StepRunStatus.FAILED, error=error_msg)
             run.status = WorkflowRunStatus.FAILED
             run.completed_at = datetime.now(timezone.utc)
             await self.db.commit()
             return
+
         elif step.on_failure == OnFailure.SKIP:
+            # 直接标记 SKIPPED（不经过 FAILED 中间态）
+            await self._mark_step(step_run, StepRunStatus.SKIPPED, error=error_msg)
             run.current_step_index += 1
             await self.db.commit()
+            return
+
         elif step.on_failure == OnFailure.NOTIFY_HUMAN:
+            await self._mark_step(step_run, StepRunStatus.FAILED, error=error_msg)
             await create_notification(
                 self.db,
                 recipient="admin",
                 type=NotificationType.WORKFLOW_PAUSED,
                 title=f"工作流步骤执行失败: {step.name or step.step_type}",
-                body=f"WorkflowRun #{run.id} 步骤失败: {e}",
+                body=f"WorkflowRun #{run.id} 步骤失败: {error_msg}",
                 entity_type="workflow_run",
                 entity_id=run.id,
                 created_by="system",
@@ -329,27 +450,65 @@ class WorkflowEngine:
             run.completed_at = datetime.now(timezone.utc)
             await self.db.commit()
             return
+
         else:
-            # RETRY
-            retry_count = (run.context or {}).get(f"step_{step.id}_retries", 0) + 1
-            if retry_count <= MAX_RETRIES:
+            # RETRY — 循环重试，不递归
+            while True:
+                step_run.retry_count += 1
+                retry_count = step_run.retry_count
+
+                if retry_count > MAX_RETRIES:
+                    logger.error(
+                        f"Workflow step {step.id} failed after {MAX_RETRIES} retries: {error_msg}"
+                    )
+                    await self._mark_step(step_run, StepRunStatus.FAILED, error=error_msg)
+                    run.status = WorkflowRunStatus.FAILED
+                    run.completed_at = datetime.now(timezone.utc)
+                    await self.db.commit()
+                    return
+
                 delay = RETRY_BASE_DELAY_SECONDS * (2 ** (retry_count - 1))
                 logger.warning(
                     f"Workflow step {step.id} failed (attempt {retry_count}/{MAX_RETRIES}), "
-                    f"retrying in {delay}s: {e}"
+                    f"retrying in {delay}s: {error_msg}"
                 )
-                run.context = run.context or {}
-                run.context[f"step_{step.id}_retries"] = retry_count
+                # 重置 step_run 为 pending 等待重试
+                await self._mark_step(step_run, StepRunStatus.PENDING)
                 await self.db.commit()
                 await asyncio.sleep(delay)
-            else:
-                logger.error(
-                    f"Workflow step {step.id} failed after {MAX_RETRIES} retries: {e}"
-                )
-                run.status = WorkflowRunStatus.FAILED
-                run.completed_at = datetime.now(timezone.utc)
-                await self.db.commit()
-                return
+
+                # 重新执行当前步骤
+                await self._mark_step(step_run, StepRunStatus.RUNNING)
+                timeout = step.timeout_seconds or 300
+                try:
+                    result = await asyncio.wait_for(
+                        self._execute_step(step, run, workflow),
+                        timeout=timeout,
+                    )
+
+                    if step.step_type == StepType.WAIT_APPROVAL:
+                        run.status = WorkflowRunStatus.WAITING_APPROVAL
+                        await self.db.commit()
+                        return
+
+                    # 重试成功
+                    await self._mark_step(step_run, StepRunStatus.COMPLETED, result=result)
+                    run.context = run.context or {}
+                    run.context[f"step_{step.id}_result"] = result
+                    if step.next_step_id and step.next_step_id in {s.id for s in steps}:
+                        next_step = next(s for s in steps if s.id == step.next_step_id)
+                        run.current_step_index = steps.index(next_step)
+                    else:
+                        run.current_step_index += 1
+                    await self.db.commit()
+                    return
+
+                except (asyncio.TimeoutError, Exception) as retry_e:
+                    error_msg = f"Step timed out after {timeout}s" if isinstance(retry_e, asyncio.TimeoutError) else str(retry_e)
+                    logger.error(f"Workflow step {step.id} retry {retry_count} failed: {error_msg}")
+                    # 继续循环，判断是否还有重试机会
+
+    # ─── 步骤逻辑 ────────────────────────────────────────
 
     async def _execute_step(self, step: WorkflowStep, run: WorkflowRun, workflow: Workflow) -> dict:
         """执行单个步骤"""
@@ -402,7 +561,6 @@ class WorkflowEngine:
             return {"notified": config.get("recipient", "admin")}
 
         elif step.step_type == StepType.WAIT_APPROVAL:
-            # 通知 admin 审批
             await create_notification(
                 self.db,
                 recipient="admin",
@@ -455,7 +613,6 @@ async def check_and_trigger_workflows(
     engine = WorkflowEngine(db)
 
     for workflow in workflows:
-        # 检查 trigger_config 过滤条件
         if workflow.trigger_config and context:
             match = True
             for key, value in workflow.trigger_config.items():

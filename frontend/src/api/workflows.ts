@@ -25,6 +25,18 @@ export interface Workflow {
   steps?: WorkflowStep[];
 }
 
+export interface WorkflowStepRun {
+  id: number;
+  run_id: number;
+  step_id: number;
+  status: string;
+  result: Record<string, any> | null;
+  error: string | null;
+  retry_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export interface WorkflowRun {
   id: number;
   workflow_id: number;
@@ -36,6 +48,7 @@ export interface WorkflowRun {
   started_at: string;
   completed_at: string | null;
   workflow_name?: string;
+  step_runs?: WorkflowStepRun[];
 }
 
 export const workflowsApi = {
@@ -62,4 +75,7 @@ export const workflowsApi = {
 
   resume: (runId: number, approved: boolean = true) =>
     api.post<WorkflowRun>(`/workflows/runs/${runId}/resume`, null, { params: { approved } }).then((r) => r.data),
+
+  getRun: (runId: number) =>
+    api.get<WorkflowRun>(`/workflows/runs/${runId}`).then((r) => r.data),
 };

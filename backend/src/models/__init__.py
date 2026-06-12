@@ -9,11 +9,12 @@ from src.models.plan_item import PlanItem, PlanItemStatus
 from src.models.activity_log import ActivityLog
 from src.models.server import Server, ServerType, ServerStatus, ServerEnvironment
 from src.models.workflow import (
-    Workflow, WorkflowStep, WorkflowRun,
-    WorkflowTrigger, WorkflowStatus, StepType, OnFailure, WorkflowRunStatus,
+    Workflow, WorkflowStep, WorkflowRun, WorkflowStepRun,
+    WorkflowTrigger, WorkflowStatus, StepType, OnFailure, WorkflowRunStatus, StepRunStatus,
 )
 from src.models.agent_memory import AgentMemory
 from src.models.project_registration import ProjectRegistration, RegistrationStatus
+from src.models.feedback import Feedback, FeedbackCategory, FeedbackStatus
 
 __all__ = [
     "Base",
@@ -26,8 +27,9 @@ __all__ = [
     "PlanItem", "PlanItemStatus",
     "ActivityLog",
     "Server", "ServerType", "ServerStatus", "ServerEnvironment",
-    "Workflow", "WorkflowStep", "WorkflowRun",
-    "WorkflowTrigger", "WorkflowStatus", "StepType", "OnFailure", "WorkflowRunStatus",
+    "Workflow", "WorkflowStep", "WorkflowRun", "WorkflowStepRun",
+    "WorkflowTrigger", "WorkflowStatus", "StepType", "OnFailure", "WorkflowRunStatus", "StepRunStatus",
     "AgentMemory",
     "ProjectRegistration", "RegistrationStatus",
+    "Feedback", "FeedbackCategory", "FeedbackStatus",
 ]

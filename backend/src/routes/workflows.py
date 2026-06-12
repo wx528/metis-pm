@@ -7,11 +7,11 @@ from sqlalchemy.orm import selectinload
 
 from src.core.dependencies import get_db
 from src.core.activity import log_activity
-from src.models.workflow import Workflow, WorkflowStep, WorkflowRun, WorkflowStatus, WorkflowRunStatus
+from src.models.workflow import Workflow, WorkflowStep, WorkflowRun, WorkflowStepRun, WorkflowStatus, WorkflowRunStatus
 from src.schemas.workflow import (
     WorkflowCreate, WorkflowUpdate, WorkflowRead, WorkflowReadWithSteps,
     WorkflowStepCreate, WorkflowStepRead,
-    WorkflowRunRead, WorkflowRunReadWithDetails,
+    WorkflowRunRead, WorkflowRunReadWithDetails, WorkflowRunReadWithStepRuns,
 )
 from src.routes.auth import get_current_user, require_role
 
@@ -128,10 +128,14 @@ async def list_workflow_runs(
     return out
 
 
-@router.get("/runs/{run_id}", response_model=WorkflowRunRead)
+@router.get("/runs/{run_id}", response_model=WorkflowRunReadWithStepRuns)
 async def get_workflow_run(run_id: int, db: AsyncSession = Depends(get_db)):
-    """工作流执行详情"""
-    result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
+    """工作流执行详情（含步骤执行记录）"""
+    result = await db.execute(
+        select(WorkflowRun)
+        .where(WorkflowRun.id == run_id)
+        .options(selectinload(WorkflowRun.step_runs))
+    )
     run = result.scalar_one_or_none()
     if not run:
         raise HTTPException(status_code=404, detail="Workflow run not found")

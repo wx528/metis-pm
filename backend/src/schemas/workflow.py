@@ -98,3 +98,24 @@ class WorkflowRunRead(BaseModel):
 
 class WorkflowRunReadWithDetails(WorkflowRunRead):
     workflow_name: Optional[str] = None
+
+
+# ── WorkflowStepRun ───────────────────────────────
+
+class WorkflowStepRunRead(BaseModel):
+    id: int
+    run_id: int
+    step_id: int
+    status: str
+    result: Optional[dict] = None
+    error: Optional[str] = None
+    retry_count: int = 0
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowRunReadWithStepRuns(WorkflowRunRead):
+    step_runs: List[WorkflowStepRunRead] = []

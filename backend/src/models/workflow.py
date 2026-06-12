@@ -85,6 +85,14 @@ class WorkflowStep(Base):
     workflow = relationship("Workflow", back_populates="steps")
 
 
+class StepRunStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class WorkflowRun(Base):
     __tablename__ = "workflow_runs"
 
@@ -99,3 +107,22 @@ class WorkflowRun(Base):
     completed_at = Column(DateTime, nullable=True)
 
     workflow = relationship("Workflow", back_populates="runs")
+    step_runs = relationship("WorkflowStepRun", back_populates="run", cascade="all, delete-orphan")
+
+
+class WorkflowStepRun(Base):
+    """工作流步骤执行记录 — 每步状态实时落盘，支持断点续传"""
+    __tablename__ = "workflow_step_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(Integer, ForeignKey("workflow_runs.id"), nullable=False, index=True)
+    step_id = Column(Integer, ForeignKey("workflow_steps.id"), nullable=False, index=True)
+    status = Column(EnumColumn(StepRunStatus), default=StepRunStatus.PENDING)
+    result = Column(JSON, nullable=True)  # 步骤执行结果
+    error = Column(Text, nullable=True)  # 步骤失败原因
+    retry_count = Column(Integer, default=0)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    run = relationship("WorkflowRun", back_populates="step_runs")
+    step = relationship("WorkflowStep")

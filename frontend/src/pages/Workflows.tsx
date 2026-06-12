@@ -9,7 +9,7 @@ import {
 } from "@ant-design/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { workflowsApi } from "../api/workflows";
-import type { Workflow } from "../api/workflows";
+import type { Workflow, WorkflowRun, WorkflowStepRun } from "../api/workflows";
 import { useProject } from "../hooks/useProject";
 import { useWorkflows } from "../hooks/useWorkflows";
 import LoadingState from "../components/ui/LoadingState";
@@ -54,11 +54,21 @@ const RUN_STATUS_COLORS: Record<string, string> = {
   aborted: "default",
 };
 
+const STEP_RUN_STATUS_CONFIG: Record<string, { color: string; label: string }> = {
+  pending: { color: "default", label: "等待" },
+  running: { color: "processing", label: "执行中" },
+  completed: { color: "success", label: "完成" },
+  failed: { color: "error", label: "失败" },
+  skipped: { color: "warning", label: "跳过" },
+};
+
 export default function Workflows() {
   const { currentProject } = useProject();
   const { data, isLoading, error } = useWorkflows(currentProject?.id);
   const queryClient = useQueryClient();
   const [selectedWf, setSelectedWf] = useState<Workflow | null>(null);
+  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
+  const [expandedRunData, setExpandedRunData] = useState<WorkflowRun | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm();
   const msgApi = message;
@@ -201,17 +211,66 @@ export default function Workflows() {
                 items={runs.map((run) => ({
                   color: RUN_STATUS_COLORS[run.status] === "error" ? "red" : RUN_STATUS_COLORS[run.status] === "success" ? "green" : "blue",
                   children: (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <Tag color={RUN_STATUS_COLORS[run.status]}>{run.status}</Tag>
-                        <span style={{ fontSize: 13 }}>{run.workflow_name || `WF#${run.workflow_id}`}</span>
-                        <span style={{ fontSize: 11, color: "#999", marginLeft: 8 }}>by {run.triggered_by || "?"}</span>
-                      </div>
-                      {run.status === "waiting_approval" && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <Tag color={RUN_STATUS_COLORS[run.status]}>{run.status}</Tag>
+                          <span style={{ fontSize: 13 }}>{run.workflow_name || `WF#${run.workflow_id}`}</span>
+                          <span style={{ fontSize: 11, color: "#999", marginLeft: 8 }}>by {run.triggered_by || "?"}</span>
+                        </div>
                         <Space size={4}>
-                          <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => handleResume(run.id, true)}>通过</Button>
-                          <Button size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleResume(run.id, false)}>拒绝</Button>
+                          {run.status === "waiting_approval" && (
+                            <>
+                              <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => handleResume(run.id, true)}>通过</Button>
+                              <Button size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleResume(run.id, false)}>拒绝</Button>
+                            </>
+                          )}
+                          <Button
+                            size="small"
+                            type="link"
+                            onClick={async () => {
+                              if (expandedRunId === run.id) {
+                                setExpandedRunId(null);
+                                setExpandedRunData(null);
+                              } else {
+                                try {
+                                  const detail = await workflowsApi.getRun(run.id);
+                                  setExpandedRunId(run.id);
+                                  setExpandedRunData(detail);
+                                } catch {
+                                  msgApi.error("获取详情失败");
+                                }
+                              }
+                            }}
+                          >
+                            {expandedRunId === run.id ? "收起" : "步骤"}
+                          </Button>
                         </Space>
+                      </div>
+                      {expandedRunId === run.id && expandedRunData?.step_runs && (
+                        <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: "2px solid #f0f0f0" }}>
+                          {expandedRunData.step_runs.length === 0 ? (
+                            <span style={{ fontSize: 12, color: "#999" }}>无步骤记录</span>
+                          ) : (
+                            expandedRunData.step_runs.map((sr) => {
+                              const cfg = STEP_RUN_STATUS_CONFIG[sr.status] || { color: "default", label: sr.status };
+                              return (
+                                <div key={sr.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                                  <Tag color={cfg.color} style={{ fontSize: 10, minWidth: 48, textAlign: "center" }}>
+                                    {cfg.label}
+                                  </Tag>
+                                  <span style={{ fontSize: 12 }}>Step #{sr.step_id}</span>
+                                  {sr.retry_count > 0 && (
+                                    <span style={{ fontSize: 10, color: "#fa8c16" }}>重试 {sr.retry_count} 次</span>
+                                  )}
+                                  {sr.error && (
+                                    <span style={{ fontSize: 10, color: "#ff4d4f" }} title={sr.error}>错误</span>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       )}
                     </div>
                   ),

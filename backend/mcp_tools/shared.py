@@ -638,3 +638,179 @@ def register_tools(mcp, require_role, safe_tool):
                 ctx = f"\n    上下文: {ctx_str}"
             lines.append(f"  Run #{item['id']} [{item['status']}] {wf_name} (step {item['current_step_index']}, by {item.get('triggered_by', '?')}){err}{ctx}")
         return "\n".join(lines)
+
+    @mcp.tool()
+    @require_role("agent", "mate", "tester", "registrar", "admin")
+    @safe_tool
+    async def get_workflow_run_detail(run_id: int) -> str:
+        """查看工作流执行详情（含每步执行状态）
+
+        Args:
+            run_id: WorkflowRun ID
+        """
+        resp = await _api_request("GET", f"{API_BASE}/workflows/runs/{run_id}")
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+
+        lines = [
+            f"Run #{data['id']} [{data['status']}]",
+            f"  工作流: {data.get('workflow_name', '?')} (ID: {data['workflow_id']})",
+            f"  触发者: {data.get('triggered_by', '?')}",
+            f"  当前步骤索引: {data['current_step_index']}",
+            f"  开始时间: {data.get('started_at', '?')}",
+            f"  完成时间: {data.get('completed_at', '-')}",
+        ]
+        if data.get('error_message'):
+            lines.append(f"  错误: {data['error_message']}")
+
+        step_runs = data.get('step_runs', [])
+        if step_runs:
+            lines.append(f"\n  步骤执行记录 ({len(step_runs)} 步):")
+            for sr in step_runs:
+                status_icon = {
+                    "pending": "⏳", "running": "▶️", "completed": "✅",
+                    "failed": "❌", "skipped": "⏭️",
+                }.get(sr['status'], "?")
+                line = f"    {status_icon} Step #{sr['step_id']} [{sr['status']}]"
+                if sr.get('retry_count', 0) > 0:
+                    line += f" (重试 {sr['retry_count']} 次)"
+                if sr.get('error'):
+                    err_short = sr['error'][:80] + "..." if len(sr['error']) > 80 else sr['error']
+                    line += f"\n      错误: {err_short}"
+                if sr.get('result'):
+                    res_str = str(sr['result'])
+                    if len(res_str) > 80:
+                        res_str = res_str[:80] + "..."
+                    line += f"\n      结果: {res_str}"
+                lines.append(line)
+        else:
+            lines.append("\n  无步骤执行记录")
+
+        return "\n".join(lines)
+
+    # ═══════════════════════════════════════════════════════
+    #  意见箱 (Feedback)
+    # ═══════════════════════════════════════════════════════
+
+    @mcp.tool()
+    @require_role("agent", "mate", "tester", "registrar", "admin")
+    @safe_tool
+    async def submit_feedback(
+        title: str,
+        content: str,
+        category: str = "other",
+        priority: str = "P2",
+        project_id: Optional[int] = None,
+        entity_type: Optional[str] = None,
+        entity_id: Optional[int] = None,
+    ) -> str:
+        """提交意见/反馈到意见箱。Agent 在使用过程中遇到问题或有改进建议时随时提交。
+
+        Args:
+            title: 反馈标题，简短概括
+            content: 反馈详细内容，描述遇到的问题或改进建议
+            category: 分类，可选值: bug（遇到Bug）, feature_request（希望新增功能）, improvement（改进建议）, ux（使用体验）, workflow（工作流相关）, other（其他）。默认 other
+            priority: 优先级，可选 P0/P1/P2/P3，默认 P2
+            project_id: 关联项目 ID（可选）
+            entity_type: 关联实体类型，如 issue, plan, workflow（可选）
+            entity_id: 关联实体 ID（可选）
+
+        Returns:
+            提交结果摘要
+        """
+        payload = {
+            "title": title,
+            "content": content,
+            "category": category,
+            "priority": priority,
+        }
+        if project_id is not None:
+            payload["project_id"] = project_id
+        if entity_type is not None:
+            payload["entity_type"] = entity_type
+        if entity_id is not None:
+            payload["entity_id"] = entity_id
+
+        resp = await _api_request("POST", f"{API_BASE}/feedbacks", json=payload)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+        return f"✅ 意见已提交: #{data['id']} [{category}] {title} (by {data.get('submitted_by', '?')})"
+
+    @mcp.tool()
+    @require_role("agent", "mate", "tester", "registrar", "admin")
+    @safe_tool
+    async def list_feedbacks(
+        category: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 20,
+    ) -> str:
+        """查看意见箱反馈列表。Agent 只能看自己提交的，admin 可看全部。
+
+        Args:
+            category: 按分类筛选，可选: bug, feature_request, improvement, ux, workflow, other
+            status: 按状态筛选，可选: open, acknowledged, in_progress, resolved, wont_fix
+            limit: 返回数量，默认 20
+
+        Returns:
+            反馈列表
+        """
+        params = {"limit": limit}
+        if category:
+            params["category"] = category
+        if status:
+            params["status"] = status
+
+        resp = await _api_request("GET", f"{API_BASE}/feedbacks", params=params)
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        data = resp.json()
+        items = data.get("items", [])
+        if not items:
+            return "意见箱暂无反馈。"
+        lines = [f"共 {data['total']} 条反馈"]
+        for item in items:
+            reply_mark = "💬" if item.get("admin_reply") else ""
+            lines.append(
+                f"  #{item['id']} [{item['category']}] [{item['status']}] {item['title']} "
+                f"(by {item.get('submitted_by', '?')}, {item.get('priority', 'P2')}) {reply_mark}"
+            )
+            if item.get("admin_reply"):
+                reply_preview = item["admin_reply"][:80]
+                lines.append(f"    💬 管理员回复: {reply_preview}{'...' if len(item['admin_reply']) > 80 else ''}")
+        return "\n".join(lines)
+
+    @mcp.tool()
+    @require_role("agent", "mate", "tester", "registrar", "admin")
+    @safe_tool
+    async def get_feedback_detail(feedback_id: int) -> str:
+        """查看反馈详情（含管理员回复）
+
+        Args:
+            feedback_id: 反馈 ID
+
+        Returns:
+            反馈详情
+        """
+        resp = await _api_request("GET", f"{API_BASE}/feedbacks/{feedback_id}")
+        if resp.status_code >= 400:
+            return f"Error: {resp.status_code} - {resp.text}"
+        d = resp.json()
+        lines = [
+            f"反馈 #{d['id']} [{d['category']}] [{d['status']}] {d['title']}",
+            f"  提交者: {d.get('submitted_by', '?')} (角色: {d.get('submitted_by_role', '?')})",
+            f"  优先级: {d.get('priority', 'P2')}",
+            f"  内容: {d['content']}",
+        ]
+        if d.get("project_id"):
+            lines.append(f"  关联项目: #{d['project_id']}")
+        if d.get("entity_type"):
+            lines.append(f"  关联实体: {d['entity_type']} #{d.get('entity_id', '?')}")
+        if d.get("admin_reply"):
+            lines.append(f"  💬 管理员回复 (by {d.get('replied_by', '?')} at {d.get('replied_at', '?')}):")
+            lines.append(f"    {d['admin_reply']}")
+        else:
+            lines.append("  管理员暂未回复")
+        lines.append(f"  创建: {d.get('created_at', '?')} | 更新: {d.get('updated_at', '?')}")
+        return "\n".join(lines)

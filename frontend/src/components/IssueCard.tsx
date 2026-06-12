@@ -2,19 +2,10 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Card, Tag } from "antd";
 import { RobotOutlined, UserOutlined, TeamOutlined } from "@ant-design/icons";
-
-interface IssueItem {
-  id: number;
-  title: string;
-  priority: string;
-  status: string;
-  source: string;
-  assignee: string | null;
-  issue_type: string;
-}
+import type { Issue } from "../api/issues";
 
 interface IssueCardProps {
-  issue: IssueItem;
+  issue: Issue;
   priorityColors: Record<string, string>;
   isDragOverlay?: boolean;
 }

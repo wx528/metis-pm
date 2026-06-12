@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.3.0] - 2026-06-10
+
+### 架构升级：SSE 通知、消息队列、安全增强与工作流灵活性
+
+基于架构评审报告 `Project_Manager_System_Architecture_Analysis.md` 的系统性改进，完成 5 项核心升级。
+
+---
+
+#### SSE 通知 + Handover 已读回执
+
+| 变更 | 说明 |
+|------|------|
+| `Comment` 模型 | 新增 `read_by` / `read_at` 字段，支持交接消息已读追踪 |
+| `backend/src/routes/comments.py` | 新增 `PUT /{id}/read` 标记已读、`GET /` 支持按 `read_by` / `type` 筛选 |
+| MCP 工具 | `mark_handover_read(comment_id)`、`check_unread_handovers()` |
+| 测试 | `test_mcp_sse_notifications.py`（5 个测试用例，1 个 SSE 长连接跳过） |
+
+---
+
+#### 消息队列 + 工作流超时检测
+
+| 变更 | 说明 |
+|------|------|
+| `backend/src/core/message_queue.py` | 轻量级消息队列：内存 `asyncio.Queue` + SQLite 持久化备份，API 不可用时自动降级 |
+| `backend/src/core/workflow_timeout.py` | 工作流执行超时检测：5 分钟无进展自动标记 `failed` |
+| `backend/main.py` | 启动时启动 `message_queue` 消费者 + `workflow_timeout` 定时检查 |
+| `notify_role` 集成 | 通知发送失败时自动入队，恢复后重试 |
+| 测试 | `test_message_queue_enqueue_and_process`、`test_message_queue_persists_when_full`、`test_workflow_run_timeout_detection` |
+
+---
+
+#### 安全增强（bcrypt 密码哈希）
+
+| 变更 | 说明 |
+|------|------|
+| `backend/src/settings.py` | `ADMIN_PASSWORD_HASH` 替代明文 `ADMIN_PASSWORD`；`AGENT_PASSWORDS_JSON` 支持 JSON 格式（含 `password_hash`） |
+| 向后兼容 | 旧版逗号分隔 `AGENT_PASSWORDS` 仍可解析，首次运行时自动迁移为 bcrypt hash |
+| `mcp_server_unified.py` | `_current_role()` 改用 `settings.resolve_identity()` + bcrypt `checkpw()` |
+| `tests/conftest.py` | 测试环境使用 bcrypt 哈希密码 |
+| 文档 | `docs/security/rbac.md`（角色权限矩阵）、`docs/security/key-management.md`（SECRET_KEY 轮换指南） |
+| 测试 | `test_security.py` 覆盖哈希验证、旧格式兼容、错误密码拒绝 |
+
+---
+
+#### 工作流灵活性（条件分支 + 并行执行 + 模板）
+
+| 变更 | 说明 |
+|------|------|
+| `WorkflowStep` 模型 | 新增 `condition`（条件表达式）、`next_step_id` / `else_step_id`（分支跳转）、`parallel_group`（并行组标识） |
+| `WorkflowEngine` 重写 | 支持条件求值（受限 `eval`）、并行组并发执行（`asyncio.gather`）、分支跳转 |
+| 模板 API | `GET /workflows/templates` 列出预置模板、`POST /workflows/from-template/{id}` 从模板创建 |
+| 预置模板 | `dev_review_test`（线性流程）、`urgent_bug`（含并行通知组） |
+| `backend/src/routes/workflows.py` | 修复路由顺序：`/templates` 移到 `/{workflow_id}` 之前；`create_workflow` / `add_workflow_step` 正确持久化新字段 |
+| 测试 | `test_workflow_flexibility.py`（6 个测试用例全部通过） |
+
+---
+
 ## [1.2.0] - 2026-06-10
 
 ### 重构：MCP Server 模块化拆分

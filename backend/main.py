@@ -2,10 +2,11 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from sqlalchemy import text, select
 
 from src.core.database import engine, Base
 from src.routes import api_router
@@ -285,6 +286,54 @@ async def _check_stuck_workflows():
             await asyncio.sleep(3600)
 
 
+async def _recover_workflow_runs():
+    """启动时恢复未完成的 WorkflowRun（backend 重启后断点续传）"""
+    from src.core.database import AsyncSessionLocal
+    from src.models.workflow import WorkflowRun, WorkflowRunStatus, Workflow
+    from src.core.workflow_engine import WorkflowEngine
+    from sqlalchemy.orm import selectinload
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(WorkflowRun).where(
+                    WorkflowRun.status == WorkflowRunStatus.RUNNING
+                ).options(
+                    selectinload(WorkflowRun.workflow).selectinload(Workflow.steps)
+                )
+            )
+            stuck_runs = result.scalars().all()
+
+            if not stuck_runs:
+                return
+
+            logger.info(f"Recovering {len(stuck_runs)} incomplete workflow run(s)")
+
+            engine = WorkflowEngine(db)
+            for run in stuck_runs:
+                try:
+                    workflow = run.workflow
+                    if not workflow:
+                        logger.warning(f"WorkflowRun #{run.id} has no workflow, marking as failed")
+                        run.status = WorkflowRunStatus.FAILED
+                        run.error_message = "Workflow deleted during execution"
+                        run.completed_at = datetime.now(timezone.utc)
+                        continue
+
+                    # 从当前步骤继续执行
+                    await engine._execute_steps(run, workflow)
+                    logger.info(f"Recovered WorkflowRun #{run.id}")
+                except Exception as e:
+                    logger.error(f"Failed to recover WorkflowRun #{run.id}: {e}")
+                    run.status = WorkflowRunStatus.FAILED
+                    run.error_message = f"Recovery failed: {e}"
+                    run.completed_at = datetime.now(timezone.utc)
+
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Workflow recovery failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
@@ -296,6 +345,9 @@ async def lifespan(app: FastAPI):
     
     # 启动消息队列消费者
     await message_queue.start()
+    
+    # 恢复未完成的 WorkflowRun
+    await _recover_workflow_runs()
     
     # 启动后台任务
     tasks = [
@@ -333,6 +385,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+# API 限流：每秒 20 次，每分钟 200 次，突发 30 次
+from src.core.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware, per_second=20, per_minute=200, burst=30)
 
 app.include_router(api_router)
 

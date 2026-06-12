@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { notificationsApi, type Notification } from "../api/notifications";
 
 interface NotificationContextType {
@@ -22,6 +22,8 @@ const NotificationContext = createContext<NotificationContextType>({
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const sseConnected = useRef(false);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshUnreadCount = useCallback(async () => {
     try {
@@ -61,15 +63,27 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // 初始加载 + 定时刷新
+  // 启动/停止轮询（SSE 连接时停止，断开时恢复）
+  const startPolling = useCallback(() => {
+    if (pollingIntervalRef.current) return;
+    refreshUnreadCount();
+    pollingIntervalRef.current = setInterval(refreshUnreadCount, 30000);
+  }, [refreshUnreadCount]);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
+
+  // 初始加载：先启动轮询，SSE 连接成功后自动停止
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
-
-    refreshUnreadCount();
-    const interval = setInterval(refreshUnreadCount, 30000); // 30 秒轮询
-    return () => clearInterval(interval);
-  }, [refreshUnreadCount]);
+    startPolling();
+    return () => stopPolling();
+  }, [startPolling, stopPolling]);
 
   // SSE 实时推送
   useEffect(() => {
@@ -81,8 +95,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     let abortController: AbortController | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let reconnectDelay = 1000; // 初始 1 秒
-    const MAX_RECONNECT_DELAY = 30000; // 最大 30 秒
+    let reconnectDelay = 1000;
+    const MAX_RECONNECT_DELAY = 30000;
 
     const connectSSE = () => {
       abortController = new AbortController();
@@ -92,41 +106,61 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       })
         .then((response) => {
           if (!response.ok || !response.body) {
-            // 认证失败不重连，其他错误重试
             if (response.status === 401) return;
             scheduleReconnect();
             return;
           }
-          // 连接成功，重置重连延迟
+          // SSE 连接成功，停止轮询
+          sseConnected.current = true;
+          stopPolling();
           reconnectDelay = 1000;
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
+
+          let currentEvent = "";
 
           const readChunk = () => {
             reader
               .read()
               .then(({ done, value }) => {
                 if (done) {
+                  sseConnected.current = false;
+                  startPolling();
                   scheduleReconnect();
                   return;
                 }
                 const text = decoder.decode(value, { stream: true });
-                // 解析 SSE 数据
+                // 解析 SSE 事件
                 const lines = text.split("\n");
                 for (const line of lines) {
-                  if (line.startsWith("data: ")) {
-                    try {
-                      const notification = JSON.parse(line.slice(6));
-                      setNotifications((prev) => [notification, ...prev]);
-                      setUnreadCount((prev) => prev + 1);
-                    } catch {
-                      // heartbeat or non-JSON, ignore
+                  if (line.startsWith("event: ")) {
+                    currentEvent = line.slice(7).trim();
+                  } else if (line.startsWith("data: ")) {
+                    const data = line.slice(6);
+                    if (currentEvent === "unread_count") {
+                      // 服务端推送未读数
+                      const count = parseInt(data, 10);
+                      if (!isNaN(count)) {
+                        setUnreadCount(count);
+                      }
+                    } else if (currentEvent === "notification") {
+                      // 服务端推送新通知
+                      try {
+                        const notification = JSON.parse(data);
+                        setNotifications((prev) => [notification, ...prev]);
+                      } catch {
+                        // ignore parse error
+                      }
                     }
+                    // heartbeat / connected 事件忽略
+                    currentEvent = "";
                   }
                 }
                 readChunk();
               })
               .catch(() => {
+                sseConnected.current = false;
+                startPolling();
                 scheduleReconnect();
               });
           };
@@ -149,8 +183,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => {
       abortController?.abort();
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      sseConnected.current = false;
     };
-  }, []);
+  }, [startPolling, stopPolling]);
 
   return (
     <NotificationContext.Provider

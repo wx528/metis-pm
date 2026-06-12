@@ -85,7 +85,7 @@ export default function AgentActivityPanel({ onHandoverClick }: Props) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <Badge color={cfg.color} />
                   <strong>{agent.identity}</strong>
-                  <Tag color={roleColors[agent.role] || "default"} size="small">
+                  <Tag color={roleColors[agent.role] || "default"} style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>
                     {roleLabels[agent.role] || agent.role}
                   </Tag>
                 </div>
@@ -134,13 +134,13 @@ export default function AgentActivityPanel({ onHandoverClick }: Props) {
                 onClick={() => onHandoverClick?.(h.issue_id)}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Tag size="small">Issue #{h.issue_id}</Tag>
+                  <Tag style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>Issue #{h.issue_id}</Tag>
                   <span style={{ flex: 1 }}>{h.title}</span>
-                  <Tag color="default" size="small">
+                  <Tag color="default" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>
                     {h.from_role}
                   </Tag>
                   <ArrowRightOutlined style={{ color: "#999" }} />
-                  <Tag color="processing" size="small">
+                  <Tag color="processing" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>
                     @{h.to_role}
                   </Tag>
                 </div>

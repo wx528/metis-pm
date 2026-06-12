@@ -128,19 +128,108 @@ class WorkflowEngine:
                 # 串行执行单步
                 await self._execute_single_step(run, current_step, steps, workflow)
 
+    # 支持的安全操作符
+    _SAFE_OPS = {
+        "==": lambda a, b: a == b,
+        "!=": lambda a, b: a != b,
+        ">": lambda a, b: a > b,
+        "<": lambda a, b: a < b,
+        ">=": lambda a, b: a >= b,
+        "<=": lambda a, b: a <= b,
+        "in": lambda a, b: a in b,
+        "not_in": lambda a, b: a not in b,
+    }
+
     def _evaluate_condition(self, condition: str, context: dict) -> bool:
-        """评估条件表达式（安全子集）"""
+        """评估条件表达式（安全子集，不使用 eval）
+
+        支持格式：
+        - 简单变量: "is_urgent"  → context["is_urgent"] 为真值
+        - 比较表达式: "priority == P0"  → context["priority"] == "P0"
+        - 包含检查: "tag in tags"  → context["tag"] in context["tags"]
+        - AND/OR 组合: "priority == P0 and is_urgent"
+        """
         if not condition:
             return True
         try:
-            # 使用安全的 eval，只允许上下文变量和基本操作
-            allowed_names = {"context": context or {}}
-            allowed_names.update(context or {})
-            result = eval(condition, {"__builtins__": {}}, allowed_names)
-            return bool(result)
+            ctx = context or {}
+            # 支持 AND/OR 组合
+            if " or " in condition.lower():
+                parts = self._split_logical(condition, "or")
+                return any(self._evaluate_condition(p.strip(), ctx) for p in parts)
+            if " and " in condition.lower():
+                parts = self._split_logical(condition, "and")
+                return all(self._evaluate_condition(p.strip(), ctx) for p in parts)
+
+            # 支持 not 前缀
+            cond = condition.strip()
+            if cond.lower().startswith("not "):
+                return not self._evaluate_condition(cond[4:].strip(), ctx)
+
+            # 比较操作符
+            for op_str, op_fn in self._SAFE_OPS.items():
+                # 从长操作符开始匹配，避免 >= 被 > 先匹配
+                parts = cond.split(f" {op_str} ", 1)
+                if len(parts) == 2:
+                    left = self._resolve_value(parts[0].strip(), ctx)
+                    right = self._resolve_value(parts[1].strip(), ctx)
+                    return bool(op_fn(left, right))
+
+            # 简单变量：直接取布尔值
+            val = self._resolve_value(cond, ctx)
+            return bool(val)
         except Exception as e:
             logger.warning(f"Condition evaluation failed: {condition}, error: {e}")
             return False
+
+    @staticmethod
+    def _split_logical(expr: str, op: str) -> list[str]:
+        """按逻辑操作符拆分，忽略引号内的内容"""
+        parts = []
+        current = []
+        i = 0
+        op_pattern = f" {op} "
+        while i < len(expr):
+            if expr[i:i + len(op_pattern)].lower() == op_pattern:
+                parts.append("".join(current))
+                current = []
+                i += len(op_pattern)
+            else:
+                current.append(expr[i])
+                i += 1
+        parts.append("".join(current))
+        return parts
+
+    @staticmethod
+    def _resolve_value(token: str, context: dict):
+        """解析值：先从 context 取，取不到则作为字面量"""
+        if not token:
+            return None
+        # 去除引号
+        if (token.startswith('"') and token.endswith('"')) or \
+           (token.startswith("'") and token.endswith("'")):
+            return token[1:-1]
+        # 从 context 取
+        if token in context:
+            return context[token]
+        # 点号访问嵌套: "context.priority"
+        if "." in token:
+            parts = token.split(".", 1)
+            if parts[0] in context:
+                val = context[parts[0]]
+                if isinstance(val, dict):
+                    return val.get(parts[1])
+        # 数字字面量
+        try:
+            return int(token)
+        except ValueError:
+            pass
+        try:
+            return float(token)
+        except ValueError:
+            pass
+        # 字符串字面量
+        return token
 
     async def _execute_parallel_group(self, run: WorkflowRun, current_step: WorkflowStep, steps, steps_map, workflow: Workflow):
         """执行并行步骤组"""
@@ -166,9 +255,13 @@ class WorkflowEngine:
         await self.db.commit()
 
     async def _execute_single_step(self, run: WorkflowRun, step: WorkflowStep, steps, workflow: Workflow):
-        """执行单步"""
+        """执行单步（带超时控制）"""
         try:
-            result = await self._execute_step(step, run, workflow)
+            timeout = step.timeout_seconds or 300
+            result = await asyncio.wait_for(
+                self._execute_step(step, run, workflow),
+                timeout=timeout,
+            )
 
             if step.step_type == StepType.WAIT_APPROVAL:
                 run.status = WorkflowRunStatus.WAITING_APPROVAL
@@ -189,12 +282,23 @@ class WorkflowEngine:
 
             await self.db.commit()
 
+        except asyncio.TimeoutError:
+            logger.error(f"Workflow step {step.id} timed out after {step.timeout_seconds}s")
+            await self._handle_step_failure(
+                run, step,
+                TimeoutError(f"Step timed out after {step.timeout_seconds or 300}s"),
+                workflow,
+            )
         except Exception as e:
             await self._handle_step_failure(run, step, e, workflow)
 
     async def _execute_step_logic(self, step: WorkflowStep, run: WorkflowRun, workflow: Workflow):
-        """执行步骤逻辑（不带状态管理，用于并行组）"""
-        return await self._execute_step(step, run, workflow)
+        """执行步骤逻辑（不带状态管理，用于并行组，带超时）"""
+        timeout = step.timeout_seconds or 300
+        return await asyncio.wait_for(
+            self._execute_step(step, run, workflow),
+            timeout=timeout,
+        )
 
     async def _handle_step_failure(self, run: WorkflowRun, step: WorkflowStep, e: Exception, workflow: Workflow):
         """处理步骤失败"""

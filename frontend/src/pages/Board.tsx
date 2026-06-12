@@ -11,24 +11,12 @@ import {
 
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Select, Spin, message, Space } from "antd";
-import { issuesApi } from "../api/issues";
+import { Select, Spin, message, Space, Modal, Input } from "antd";
+import { issuesApi, type Issue } from "../api/issues";
 import { milestonesApi } from "../api/milestones";
 import { useProject } from "../hooks/useProject";
 import BoardColumn from "../components/BoardColumn";
 import IssueCard from "../components/IssueCard";
-
-interface IssueItem {
-  id: number;
-  title: string;
-  priority: string;
-  status: string;
-  source: string;
-  assignee: string | null;
-  milestone_id: number | null;
-  issue_type: string;
-  project_id: number | null;
-}
 
 interface Milestone {
   id: number;
@@ -53,11 +41,13 @@ const PRIORITY_COLORS: Record<string, string> = {
 export default function Board() {
   const { currentProject } = useProject();
   const [loading, setLoading] = useState(true);
-  const [issues, setIssues] = useState<IssueItem[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [filterMilestone, setFilterMilestone] = useState<number | undefined>();
-  const [deferTarget, setDeferTarget] = useState<{ issueId: number; milestoneId: number } | null>(null);
+  const [deferModal, setDeferModal] = useState<{ issueId: number; open: boolean }>({ issueId: 0, open: false });
+  const [deferMilestoneId, setDeferMilestoneId] = useState<number | undefined>();
+  const [deferReason, setDeferReason] = useState("");
   const messageApi = message;
 
   const sensors = useSensors(
@@ -73,7 +63,7 @@ export default function Board() {
         milestone_id: filterMilestone,
         limit: 200,
       });
-      setIssues(res.data.items as unknown as IssueItem[]);
+      setIssues(res.data.items);
     } finally {
       setLoading(false);
     }
@@ -134,9 +124,10 @@ export default function Board() {
         messageApi.warning("请先创建里程碑");
         return;
       }
-      // 自动选第一个 milestone 并延迟
-      const targetMilestone = milestones[0];
-      setDeferTarget({ issueId, milestoneId: targetMilestone.id });
+      // 弹窗让用户选择目标 milestone 和填写原因
+      setDeferMilestoneId(milestones[0].id);
+      setDeferReason("");
+      setDeferModal({ issueId, open: true });
       return;
     }
 
@@ -153,26 +144,26 @@ export default function Board() {
     }
   };
 
-  // 处理 defer
-  useEffect(() => {
-    if (!deferTarget) return;
-    const doDefer = async () => {
-      const { issueId, milestoneId } = deferTarget;
-      const issue = issues.find((i) => i.id === issueId);
-      if (!issue) { setDeferTarget(null); return; }
+  // 处理 defer 确认
+  const handleDeferConfirm = async () => {
+    const issueId = deferModal.issueId;
+    if (!deferMilestoneId) {
+      messageApi.warning("请选择目标里程碑");
+      return;
+    }
+    const issue = issues.find((i) => i.id === issueId);
+    if (!issue) { setDeferModal({ issueId: 0, open: false }); return; }
 
-      setIssues((prev) => prev.map((i) => (i.id === issueId ? { ...i, status: "deferred" } : i)));
-      try {
-        await issuesApi.defer(issueId, milestoneId);
-        messageApi.success(`Issue #${issueId} → deferred`);
-      } catch {
-        setIssues((prev) => prev.map((i) => (i.id === issueId ? { ...i, status: issue.status } : i)));
-        messageApi.error("暂缓失败");
-      }
-      setDeferTarget(null);
-    };
-    doDefer();
-  }, [deferTarget]);
+    setIssues((prev) => prev.map((i) => (i.id === issueId ? { ...i, status: "deferred" } : i)));
+    setDeferModal({ issueId: 0, open: false });
+    try {
+      await issuesApi.defer(issueId, deferMilestoneId, deferReason || undefined);
+      messageApi.success(`Issue #${issueId} → deferred`);
+    } catch {
+      setIssues((prev) => prev.map((i) => (i.id === issueId ? { ...i, status: issue.status } : i)));
+      messageApi.error("暂缓失败");
+    }
+  };
 
   const activeIssue = activeId ? issues.find((i) => i.id === activeId) : null;
 
@@ -224,6 +215,38 @@ export default function Board() {
           {activeIssue ? <IssueCard issue={activeIssue} priorityColors={PRIORITY_COLORS} isDragOverlay /> : null}
         </DragOverlay>
       </DndContext>
+
+      <Modal
+        title="暂缓 Issue"
+        open={deferModal.open}
+        onOk={handleDeferConfirm}
+        onCancel={() => setDeferModal({ issueId: 0, open: false })}
+        okText="确认暂缓"
+        cancelText="取消"
+      >
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 4, fontSize: 13, color: "#666" }}>目标里程碑</div>
+          <Select
+            value={deferMilestoneId}
+            onChange={setDeferMilestoneId}
+            style={{ width: "100%" }}
+            placeholder="选择里程碑"
+          >
+            {milestones.map((m) => (
+              <Select.Option key={m.id} value={m.id}>{m.title}</Select.Option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <div style={{ marginBottom: 4, fontSize: 13, color: "#666" }}>暂缓原因（可选）</div>
+          <Input.TextArea
+            value={deferReason}
+            onChange={(e) => setDeferReason(e.target.value)}
+            rows={3}
+            placeholder="填写暂缓原因..."
+          />
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 """
 MCP Server 共享模块
-工人 (mcp_server.py) 和大副 (mcp_server_mate.py) 共用的认证、API 请求、中间件
+统一 MCP Server (mcp_server_unified.py) 的认证、API 请求、中间件
 """
 import os
 import sys
@@ -71,6 +71,7 @@ async def _api_request(method: str, url: str, *, max_retries: int = 3, **kwargs)
     """
     password = _get_password()
     headers = kwargs.pop("headers", None) or await get_headers()
+    last_exception: Exception | None = None
     
     for attempt in range(max_retries):
         try:
@@ -88,13 +89,14 @@ async def _api_request(method: str, url: str, *, max_retries: int = 3, **kwargs)
                 return resp
                 
         except (httpx.ConnectError, httpx.TimeoutException) as e:
+            last_exception = e
             if attempt < max_retries - 1:
                 wait_time = 1.0 * (2 ** attempt)  # 指数退避：1s, 2s, 4s
                 await asyncio.sleep(wait_time)
                 continue
-            raise  # 重试耗尽，抛出异常
-            
-    return resp  # type: ignore
+    
+    # 所有重试耗尽
+    raise last_exception or RuntimeError(f"API request failed after {max_retries} retries")
 
 
 async def get_headers() -> dict:

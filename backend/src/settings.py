@@ -82,7 +82,13 @@ class Settings(BaseSettings):
         if not self.SECRET_KEY:
             raise ValueError("SECRET_KEY must be set in .env file")
         if not self.ADMIN_PASSWORD_HASH:
-            raise ValueError("ADMIN_PASSWORD_HASH must be set in .env file. Use: python -c \"import bcrypt; print(bcrypt.hashpw('your_password'.encode(), bcrypt.gensalt()).decode())\"")
+            raise ValueError(
+                "ADMIN_PASSWORD_HASH must be set in .env file.\n"
+                "Migration steps:\n"
+                "  1. Generate bcrypt hash: python -c \"import bcrypt; print(bcrypt.hashpw('your_password'.encode(), bcrypt.gensalt()).decode())\"\n"
+                "  2. Add to .env: ADMIN_PASSWORD_HASH=$2b$12$... (the output from step 1)\n"
+                "  3. Remove old ADMIN_PASSWORD if present (no longer used)"
+            )
 
 
 settings = Settings()

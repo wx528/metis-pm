@@ -126,13 +126,30 @@ async def notification_stream(
 
     async def event_generator():
         try:
-            # 发送初始连接确认
+            # 发送初始连接确认 + 当前未读数
+            unread_result = await db.execute(
+                select(func.count(Notification.id)).where(
+                    _recipient_filter(user),
+                    Notification.read == False,
+                )
+            )
+            unread_count = unread_result.scalar() or 0
             yield f"event: connected\ndata: {recipient}\n\n"
+            yield f"event: unread_count\ndata: {unread_count}\n\n"
             while True:
                 try:
                     # 等待新通知，超时 30 秒发送心跳
                     data = await asyncio.wait_for(queue.get(), timeout=30)
                     yield f"event: notification\ndata: {data}\n\n"
+                    # 通知后推送最新未读数
+                    unread_result = await db.execute(
+                        select(func.count(Notification.id)).where(
+                            _recipient_filter(user),
+                            Notification.read == False,
+                        )
+                    )
+                    unread_count = unread_result.scalar() or 0
+                    yield f"event: unread_count\ndata: {unread_count}\n\n"
                 except asyncio.TimeoutError:
                     yield f"event: heartbeat\ndata: ping\n\n"
         except asyncio.CancelledError:

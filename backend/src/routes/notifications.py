@@ -40,6 +40,7 @@ async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     unread_only: bool = Query(False),
     project_id: Optional[int] = Query(None),
+    notification_type: Optional[str] = Query(None, description="通知类型筛选"),
     since: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
@@ -50,6 +51,8 @@ async def list_notifications(
         query = query.where(Notification.read == False)
     if project_id is not None:
         query = query.where(Notification.project_id == project_id)
+    if notification_type:
+        query = query.where(Notification.type == notification_type)
     if since:
         from datetime import datetime as dt
         try:
@@ -103,6 +106,39 @@ async def mark_all_read(db: AsyncSession = Depends(get_db), user: dict = Depends
     await db.execute(
         update(Notification)
         .where(_recipient_filter(user), Notification.read == False)
+        .values(read=True)
+    )
+    await db.commit()
+    return None
+
+
+@router.delete("/batch", status_code=204)
+async def batch_delete_notifications(
+    notification_ids: list[int],
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """批量删除通知"""
+    from sqlalchemy import delete
+    await db.execute(
+        delete(Notification)
+        .where(Notification.id.in_(notification_ids), _recipient_filter(user))
+    )
+    await db.commit()
+    return None
+
+
+@router.put("/batch-read", status_code=204)
+async def batch_mark_read(
+    notification_ids: list[int],
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """批量标记已读"""
+    from sqlalchemy import update
+    await db.execute(
+        update(Notification)
+        .where(Notification.id.in_(notification_ids), _recipient_filter(user))
         .values(read=True)
     )
     await db.commit()

@@ -1,0 +1,120 @@
+# ========================================
+# CI: Docker 镜像构建 + 推送
+# ========================================
+# 触发：推送 v* tag（如 v1.3.0）
+# 产出：backend + frontend 镜像推送到 Registry
+#
+# 使用方式：
+#   git tag v1.3.0 && git push origin v1.3.0
+#
+# 需配置 Secrets：
+#   REGISTRY       - 镜像仓库地址（如 ghcr.io 或自建 registry）
+#   REGISTRY_USER  - 仓库用户名
+#   REGISTRY_TOKEN - 仓库密码/Token
+
+name: Build & Push Images
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  REGISTRY: ${{ secrets.REGISTRY || 'ghcr.io' }}
+  IMAGE_PREFIX: ${{ secrets.REGISTRY || 'ghcr.io' }}/${{ github.repository }}
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/backend
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USER || github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/frontend
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USER || github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            VITE_API_URL=/api/v1
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 可选：部署到 k3s 集群
+  # deploy:
+  #   needs: [build-backend, build-frontend]
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Deploy to k3s
+  #       run: |
+  #         helm upgrade --install pm ./helm \
+  #           --set image.registry=${{ env.IMAGE_PREFIX }}/ \
+  #           --set backend.image.tag=${GITHUB_REF#refs/tags/v} \
+  #           --set frontend.image.tag=${GITHUB_REF#refs/tags/v} \
+  #           --set secretKey=${{ secrets.SECRET_KEY }} \
+  #           --set adminPassword=${{ secrets.ADMIN_PASSWORD }}

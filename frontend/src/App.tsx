@@ -17,6 +17,8 @@ import PlanDetail from "./pages/PlanDetail";
 import Servers from "./pages/Servers";
 import Projects from "./pages/Projects";
 import ProjectRegistrations from "./pages/ProjectRegistrations";
+import Feedbacks from "./pages/Feedbacks";
+import DeadLetterQueue from "./pages/DeadLetterQueue";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn } = useAuth();
@@ -54,6 +56,8 @@ function App() {
               {/* 项目管理（跨项目，不绑定 slug） */}
               <Route path="projects" element={<Projects />} />
               <Route path="project-registrations" element={<ProjectRegistrations />} />
+              <Route path="feedbacks" element={<Feedbacks />} />
+              <Route path="dead-letter" element={<DeadLetterQueue />} />
 
               {/* 新路由：带项目 slug */}
               <Route path="projects/:projectSlug/dashboard" element={<Dashboard />} />

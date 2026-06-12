@@ -22,6 +22,8 @@ import {
   RightOutlined,
   DownOutlined,
   FolderOpenOutlined,
+  MessageOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useProject } from "../hooks/useProject";
@@ -158,12 +160,16 @@ export default function Layout() {
     { key: `${basePath}/workflows`, icon: <ThunderboltOutlined />, label: "工作流" },
     { key: `/projects`, icon: <FolderOutlined />, label: "项目管理" },
     { key: `/project-registrations`, icon: <FolderOpenOutlined />, label: "项目登记" },
+    { key: `/feedbacks`, icon: <MessageOutlined />, label: "意见箱" },
+    { key: `/dead-letter`, icon: <WarningOutlined />, label: "死信队列" },
   ];
 
   const selectedKey =
     menuItems.find((item) => {
       if (item.key === "/projects") return location.pathname === "/projects";
       if (item.key === "/project-registrations") return location.pathname === "/project-registrations";
+      if (item.key === "/feedbacks") return location.pathname === "/feedbacks";
+      if (item.key === "/dead-letter") return location.pathname === "/dead-letter";
       return location.pathname.startsWith(item.key);
     })?.key || basePath || "/";
 

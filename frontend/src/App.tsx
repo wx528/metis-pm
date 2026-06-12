@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ConfigProvider } from "antd";
+import { ConfigProvider, theme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { ProjectProvider } from "./hooks/useProject";
 import { NotificationProvider } from "./hooks/useNotifications";
+import { ThemeProvider, useTheme } from "./hooks/useTheme";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -27,9 +28,15 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isLoggedIn ? <>{children}</> : <Navigate to="/login" />;
 }
 
-function App() {
+function ThemedApp() {
+  const { theme: themeMode } = useTheme();
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        algorithm: themeMode === "dark" ? theme.darkAlgorithm : theme.defaultAlgorithm,
+      }}
+    >
       <AuthProvider>
         <BrowserRouter>
           <Routes>
@@ -78,6 +85,14 @@ function App() {
         </BrowserRouter>
       </AuthProvider>
     </ConfigProvider>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <ThemedApp />
+    </ThemeProvider>
   );
 }
 

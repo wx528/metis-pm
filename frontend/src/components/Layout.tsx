@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Layout as AntLayout, Menu, Button, Tag, Dropdown, Badge, Drawer, List, Space, Typography, Modal, Form, Input, Progress } from "antd";
+import { Layout as AntLayout, Menu, Button, Tag, Dropdown, Badge, Drawer, List, Space, Typography, Modal, Form, Input, Progress, Switch } from "antd";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   DashboardOutlined,
@@ -24,10 +24,15 @@ import {
   FolderOpenOutlined,
   MessageOutlined,
   WarningOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useProject } from "../hooks/useProject";
 import { useNotifications } from "../hooks/useNotifications";
+import { useTheme } from "../hooks/useTheme";
 import type { MenuProps } from "antd";
 
 const { Header, Sider, Content, Footer } = AntLayout;
@@ -48,7 +53,23 @@ export default function Layout() {
   const { logout, sub, role } = useAuth();
   const { currentProject, projects, setCurrentProject } = useProject();
   const { unreadCount, notifications, refreshNotifications, markRead, markAllRead } = useNotifications();
+  const { theme, toggleTheme } = useTheme();
   const [notifOpen, setNotifOpen] = useState(false);
+
+  // 响应式：移动端侧边栏折叠
+  const [collapsed, setCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setCollapsed(true);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // 全局资源管理
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -209,15 +230,48 @@ export default function Layout() {
 
   return (
     <AntLayout style={{ minHeight: "100vh" }}>
-      <Sider theme="light" width={220} style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+      <Sider
+        theme={theme === "dark" ? "dark" : "light"}
+        width={220}
+        collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        trigger={null}
+        breakpoint="md"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100vh",
+          overflow: "hidden",
+          position: isMobile ? "fixed" : "relative",
+          zIndex: isMobile ? 100 : "auto",
+          left: 0,
+          top: 0,
+        }}
+      >
+        {/* 移动端遮罩 */}
+        {isMobile && !collapsed && (
+          <div
+            onClick={() => setCollapsed(true)}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 220,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.3)",
+              zIndex: -1,
+            }}
+          />
+        )}
         {/* 项目切换器 */}
-        <div style={{ padding: "12px 16px" }}>
+        <div style={{ padding: collapsed ? "12px 8px" : "12px 16px" }}>
           <Dropdown menu={{ items: projectMenuItems, onClick: handleProjectSwitch }} trigger={["click"]}>
             <Button
               icon={<SwapOutlined />}
               style={{ width: "100%", textAlign: "left", overflow: "hidden", textOverflow: "ellipsis" }}
             >
-              {currentProject?.name || "选择项目"}
+              {!collapsed && (currentProject?.name || "选择项目")}
             </Button>
           </Dropdown>
         </div>
@@ -228,97 +282,132 @@ export default function Layout() {
             mode="inline"
             selectedKeys={[selectedKey]}
             items={menuItems}
-            onClick={({ key }) => navigate(key)}
+            onClick={({ key }) => {
+              navigate(key);
+              if (isMobile) setCollapsed(true);
+            }}
             style={{ border: "none" }}
           />
         </div>
 
         {/* 底部：全局资源概览 - 固定不滚动 */}
-        <div style={{ flex: "0 0 auto", borderTop: "1px solid #f0f0f0" }}>
-          {/* 标题行 */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "10px 16px 6px",
-            }}
-          >
-            <Text type="secondary" style={{ fontSize: 12, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
-              全局资源
-            </Text>
-            <Button type="link" size="small" style={{ fontSize: 12, padding: 0, height: "auto" }} onClick={() => setDrawerOpen(true)}>
-              管理
-            </Button>
-          </div>
+        {!collapsed && (
+          <div style={{ flex: "0 0 auto", borderTop: `1px solid ${theme === "dark" ? "#303030" : "#f0f0f0"}` }}>
+            {/* 标题行 */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 16px 6px",
+              }}
+            >
+              <Text type="secondary" style={{ fontSize: 12, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+                全局资源
+              </Text>
+              <Button type="link" size="small" style={{ fontSize: 12, padding: 0, height: "auto" }} onClick={() => setDrawerOpen(true)}>
+                管理
+              </Button>
+            </div>
 
-          {/* 每个类别一行汇总进度 */}
-          <div style={{ padding: "0 16px 12px" }}>
-            {categories.length === 0 && (
-              <Text type="secondary" style={{ fontSize: 11 }}>暂无资源</Text>
-            )}
-            {categories.map((cat) => {
-              const { pct } = getCategorySummary(cat);
-              return (
-                <div
-                  key={cat}
-                  style={{ marginBottom: 6, cursor: "pointer" }}
-                  onClick={() => setDrawerOpen(true)}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-                    <Text style={{ fontSize: 12 }}>{cat}</Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>{pct}%</Text>
+            {/* 每个类别一行汇总进度 */}
+            <div style={{ padding: "0 16px 12px" }}>
+              {categories.length === 0 && (
+                <Text type="secondary" style={{ fontSize: 11 }}>暂无资源</Text>
+              )}
+              {categories.map((cat) => {
+                const { pct } = getCategorySummary(cat);
+                return (
+                  <div
+                    key={cat}
+                    style={{ marginBottom: 6, cursor: "pointer" }}
+                    onClick={() => setDrawerOpen(true)}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                      <Text style={{ fontSize: 12 }}>{cat}</Text>
+                      <Text type="secondary" style={{ fontSize: 11 }}>{pct}%</Text>
+                    </div>
+                    <Progress
+                      percent={pct}
+                      showInfo={false}
+                      size="small"
+                      strokeColor={pct >= 90 ? "#ff4d4f" : pct >= 70 ? "#faad14" : "#1890ff"}
+                      trailColor={theme === "dark" ? "#303030" : "#f0f0f0"}
+                    />
                   </div>
-                  <Progress
-                    percent={pct}
-                    showInfo={false}
-                    size="small"
-                    strokeColor={pct >= 90 ? "#ff4d4f" : pct >= 70 ? "#faad14" : "#1890ff"}
-                    trailColor="#f0f0f0"
-                  />
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </Sider>
 
-      <AntLayout>
+      <AntLayout style={{ marginLeft: isMobile && collapsed ? 0 : undefined }}>
         <Header
           style={{
-            background: "#fff",
+            background: theme === "dark" ? "#141414" : "#fff",
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             alignItems: "center",
             gap: 12,
-            padding: "0 24px",
+            padding: isMobile ? "0 12px" : "0 24px",
+            borderBottom: `1px solid ${theme === "dark" ? "#303030" : "#f0f0f0"}`,
           }}
         >
-          <Badge count={unreadCount} size="small" offset={[-4, 4]}>
+          {/* 左侧：折叠按钮 */}
+          <Button
+            type="text"
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={() => setCollapsed(!collapsed)}
+            style={{ fontSize: 16 }}
+          />
+
+          {/* 右侧操作区 */}
+          <Space size={isMobile ? 4 : 12}>
+            {/* 主题切换 */}
             <Button
               type="text"
-              icon={<BellOutlined />}
-              onClick={() => {
-                setNotifOpen(true);
-                refreshNotifications();
-              }}
+              icon={theme === "dark" ? <SunOutlined /> : <MoonOutlined />}
+              onClick={toggleTheme}
+              title={theme === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
             />
-          </Badge>
-          {sub && (
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <UserOutlined />
-              <span>{sub}</span>
-              <Tag color={role === "admin" ? "blue" : "green"}>{role === "admin" ? "管理员" : "Agent"}</Tag>
-            </span>
-          )}
-          <Button icon={<LogoutOutlined />} onClick={logout}>
-            退出
-          </Button>
+
+            <Badge count={unreadCount} size="small" offset={[-4, 4]}>
+              <Button
+                type="text"
+                icon={<BellOutlined />}
+                onClick={() => {
+                  setNotifOpen(true);
+                  refreshNotifications();
+                }}
+              />
+            </Badge>
+
+            {sub && !isMobile && (
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <UserOutlined />
+                <span>{sub}</span>
+                <Tag color={role === "admin" ? "blue" : "green"}>{role === "admin" ? "管理员" : "Agent"}</Tag>
+              </span>
+            )}
+            <Button icon={<LogoutOutlined />} onClick={logout} size={isMobile ? "small" : "middle"}>
+              {!isMobile && "退出"}
+            </Button>
+          </Space>
         </Header>
-        <Content style={{ margin: 24, padding: 24, background: "#fff", borderRadius: 8, flex: 1 }}>
+        <Content
+          style={{
+            margin: isMobile ? 8 : 24,
+            padding: isMobile ? 12 : 24,
+            background: theme === "dark" ? "#1f1f1f" : "#fff",
+            borderRadius: 8,
+            flex: 1,
+            overflow: "auto",
+          }}
+        >
           <Outlet />
         </Content>
-        <Footer style={{ textAlign: "center", background: "#f0f2f5", padding: "12px 24px" }}>
+        <Footer style={{ textAlign: "center", padding: "12px 24px" }}>
           Project Manager System v{__APP_VERSION__}
         </Footer>
       </AntLayout>

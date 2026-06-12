@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Row, Col, Card, Statistic, List, Tag, Timeline, Progress, Select, Empty } from "antd";
 import {
   BugOutlined,
@@ -46,6 +47,7 @@ const actionLabels: Record<string, string> = {
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<string>("all");
+  const navigate = useNavigate();
   const { currentProject } = useProject();
   const { data, isLoading, error } = useDashboard(currentProject?.id, period);
 
@@ -92,7 +94,10 @@ export default function Dashboard() {
 
   return (
     <div>
-      <AgentActivityPanel />
+      <AgentActivityPanel
+        onIssueClick={(issueId) => navigate(`/issues/${issueId}`)}
+        onHandoverClick={(issueId) => navigate(`/issues/${issueId}`)}
+      />
 
       <h2>仪表盘{currentProject ? ` — ${currentProject.name}` : ""}</h2>
 

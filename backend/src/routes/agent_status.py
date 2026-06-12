@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
@@ -16,10 +16,13 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 @router.get("/agents")
 async def get_agent_status(
     project_id: Optional[int] = Query(None),
+    include_flow: bool = Query(False, description="是否包含协作流程数据"),
+    include_activity: bool = Query(False, description="是否包含实时活动流"),
+    activity_limit: int = Query(20, ge=1, le=100, description="活动流条数限制"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """获取各 Agent 角色的实时状态和待交接任务"""
+    """获取各 Agent 角色的实时状态、待交接任务、协作流程和活动流"""
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -135,7 +138,130 @@ async def get_agent_status(
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
 
-    return {
+    result = {
         "agents": agents,
         "pending_handovers": pending_handovers,
     }
+
+    # 4. 协作流程数据（Issue 在各 Agent 间的流转）
+    if include_flow:
+        day_ago = now - timedelta(hours=24)
+        flow_query = select(ActivityLog).where(
+            ActivityLog.entity_type == "issue",
+            ActivityLog.action.in_(["status_changed", "created", "completed", "approved", "rejected"]),
+            ActivityLog.created_at >= day_ago,
+        )
+        if project_id:
+            flow_query = flow_query.where(ActivityLog.project_id == project_id)
+        flow_query = flow_query.order_by(desc(ActivityLog.created_at)).limit(50)
+        flow_result = await db.execute(flow_query)
+        flow_logs = flow_result.scalars().all()
+
+        collaboration_flow = []
+        for log in flow_logs:
+            # 推断角色
+            from_role = "agent"
+            if "mate" in (log.actor or "").lower():
+                from_role = "mate"
+            elif "tester" in (log.actor or "").lower():
+                from_role = "tester"
+            elif "registrar" in (log.actor or "").lower():
+                from_role = "registrar"
+
+            # 推断目标角色（基于状态变化）
+            to_role = "agent"
+            new_status = log.new_value.get("status") if log.new_value else None
+            if new_status == "review":
+                to_role = "mate"
+            elif new_status == "closed":
+                to_role = "user"
+            elif log.action == "rejected":
+                to_role = "agent"
+
+            collaboration_flow.append({
+                "issue_id": log.entity_id,
+                "actor": log.actor,
+                "from_role": from_role,
+                "to_role": to_role,
+                "action": log.action,
+                "old_status": log.old_value.get("status") if log.old_value else None,
+                "new_status": new_status,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            })
+
+        result["collaboration_flow"] = collaboration_flow
+
+    # 5. 实时活动流
+    if include_activity:
+        activity_query = select(ActivityLog).where(
+            ActivityLog.actor != "user",
+        )
+        if project_id:
+            activity_query = activity_query.where(ActivityLog.project_id == project_id)
+        activity_query = activity_query.order_by(desc(ActivityLog.created_at)).limit(activity_limit)
+        activity_result = await db.execute(activity_query)
+        activity_logs = activity_result.scalars().all()
+
+        activity_stream = []
+        for log in activity_logs:
+            # 推断角色
+            role = "agent"
+            if "mate" in (log.actor or "").lower():
+                role = "mate"
+            elif "tester" in (log.actor or "").lower():
+                role = "tester"
+            elif "registrar" in (log.actor or "").lower():
+                role = "registrar"
+
+            activity_stream.append({
+                "id": log.id,
+                "actor": log.actor,
+                "role": role,
+                "entity_type": log.entity_type,
+                "entity_id": log.entity_id,
+                "action": log.action,
+                "old_value": log.old_value,
+                "new_value": log.new_value,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            })
+
+        result["activity_stream"] = activity_stream
+
+    # 6. 工作负载（每个 Agent 当前在处理的任务）
+    workload_query = select(Issue).where(
+        Issue.status.in_([IssueStatus.OPEN, IssueStatus.IN_PROGRESS, IssueStatus.REVIEW]),
+    )
+    if project_id:
+        workload_query = workload_query.where(Issue.project_id == project_id)
+    workload_query = workload_query.order_by(desc(Issue.priority), Issue.created_at).limit(50)
+    workload_result = await db.execute(workload_query)
+    workload_issues = workload_result.scalars().all()
+
+    workload = {}
+    for issue in workload_issues:
+        # 根据状态推断当前负责人角色
+        if issue.status == IssueStatus.REVIEW:
+            assignee_role = "mate"
+        elif issue.assignee:
+            if "mate" in issue.assignee.lower():
+                assignee_role = "mate"
+            elif "tester" in issue.assignee.lower():
+                assignee_role = "tester"
+            else:
+                assignee_role = "agent"
+        else:
+            assignee_role = "unassigned"
+
+        if assignee_role not in workload:
+            workload[assignee_role] = []
+        workload[assignee_role].append({
+            "id": issue.id,
+            "title": issue.title,
+            "status": issue.status.value if issue.status else None,
+            "priority": issue.priority.value if issue.priority else None,
+            "assignee": issue.assignee,
+        })
+
+    result["workload"] = workload
+
+    return result

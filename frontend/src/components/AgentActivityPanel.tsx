@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
-import { Card, Row, Col, Tag, Spin, Empty, Badge, Tabs, Timeline, Progress, Tooltip } from "antd";
+import { Card, Row, Col, Tag, Spin, Empty, Badge, Tabs, Timeline, Progress } from "antd";
 import {
   RobotOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  MessageOutlined,
   ArrowRightOutlined,
   ThunderboltOutlined,
   TeamOutlined,

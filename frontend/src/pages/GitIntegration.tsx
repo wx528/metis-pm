@@ -24,7 +24,6 @@ import {
   ReloadOutlined,
   GithubOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined,
 } from "@ant-design/icons";
 import {
   gitIntegrationApi,
@@ -34,7 +33,7 @@ import {
 } from "../api/gitIntegration";
 import { useProject } from "../hooks/useProject";
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { Option } = Select;
 
 const platformLabels: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
@@ -140,7 +139,7 @@ export default function GitIntegrationSettings() {
 
       setModalVisible(false);
       loadIntegrations();
-    } catch (err) {
+    } catch (err: any) {
       if (err.errorFields) return; // 表单验证错误
       message.error("操作失败");
     }

@@ -2,7 +2,6 @@ import { Card, Progress, List, Tag, Space, Typography } from "antd";
 import {
   CheckCircleOutlined,
   WarningOutlined,
-  ClockCircleOutlined,
   FireOutlined,
 } from "@ant-design/icons";
 

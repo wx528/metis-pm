@@ -16,7 +16,6 @@ import {
 import {
   BellOutlined,
   CheckOutlined,
-  DeleteOutlined,
   FilterOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";

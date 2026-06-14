@@ -36,7 +36,7 @@ export default function CopilotChat({ open, onClose }: CopilotChatProps) {
   }, [messages]);
 
   useEffect(() => {
-    fetch("/api/system/config")
+    fetch("/api/v1/monitoring/config")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (data?.ai_enabled) setConnected(true); })
       .catch(() => {});

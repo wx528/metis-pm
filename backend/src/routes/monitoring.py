@@ -20,6 +20,21 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 public_router = APIRouter()
 
 
+@public_router.get("/config")
+async def get_system_config():
+    """系统配置（公开，无需认证）"""
+    import os
+    ai_enabled = os.getenv("PM_COPILOT_ENABLED", "false").lower() == "true"
+    return {
+        "ai_enabled": ai_enabled,
+        "features": {
+            "copilot_chat": ai_enabled,
+            "ai_scan": ai_enabled,
+            "risk_alert_auto": ai_enabled,
+        },
+    }
+
+
 @router.get("/system")
 async def get_system_metrics(
     db: AsyncSession = Depends(get_db),

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState, useEffect } from "react";
-import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
+import { useCallback, useMemo, useState, useEffect } from "react";
+import ForceGraph2D from "react-force-graph-2d";
 import type { GraphNode, GraphEdge } from "../../api/graph";
 import NodePreview from "./NodePreview";
 
@@ -24,7 +24,6 @@ interface GraphNodeType {
 }
 
 export default function ForceGraph({ nodes, edges, onNodeClick, width, height }: ForceGraphProps) {
-  const fgRef = useRef<ForceGraphMethods>();
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
@@ -103,7 +102,6 @@ export default function ForceGraph({ nodes, edges, onNodeClick, width, height }:
   return (
     <>
       <ForceGraph2D
-        ref={fgRef}
         width={width}
         height={height}
         graphData={{ nodes: graphNodes, links: graphLinks }}

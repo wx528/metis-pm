@@ -4,12 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.dependencies import get_db
+from src.routes.auth import get_current_user
 from src.models.project import Project
 from src.models.milestone import Milestone
 from src.models.issue import Issue
 from src.schemas.graph import GraphNode, GraphEdge, GraphResponse
 
-router = APIRouter(dependencies=[Depends(get_db)])
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 COLOR_PALETTE = [
     "#ff6b6b", "#51cf66", "#4a9eff", "#ffd43b",
@@ -87,7 +88,7 @@ async def get_project_graph(
 
     for ms in milestones:
         nodes.append(GraphNode(
-            id=ms.id,
+            id=f"ms-{ms.id}",
             type="milestone",
             title=ms.title or f"Milestone {ms.id}",
             size=30,
@@ -101,16 +102,17 @@ async def get_project_graph(
             issue_labels = [l.strip() for l in issue.labels.split(",") if l.strip()]
 
         color = label_colors.get(issue_labels[0], "#888888") if issue_labels else "#888888"
-        size = PRIORITY_SIZE.get(issue.priority, 12)
-        opacity = STATUS_OPACITY.get(issue.status, 0.9)
+        size = PRIORITY_SIZE.get(str(issue.priority), 12)
+        opacity = STATUS_OPACITY.get(str(issue.status), 0.9)
 
         nodes.append(GraphNode(
-            id=issue.id,
+            id=f"issue-{issue.id}",
             type="issue",
             title=issue.title,
-            priority=issue.priority,
-            status=issue.status,
-            issue_type=issue.issue_type,
+            issue_id=issue.id,
+            priority=str(issue.priority),
+            status=str(issue.status),
+            issue_type=str(issue.issue_type),
             labels=issue_labels,
             milestone_id=issue.milestone_id,
             parent_id=issue.parent_id,
@@ -120,9 +122,9 @@ async def get_project_graph(
         ))
 
     edges: list[GraphEdge] = []
-    issue_ids = {issue.id for issue in issues}
+    issue_id_set = {issue.id for issue in issues}
     for issue in issues:
-        if issue.parent_id and issue.parent_id in issue_ids:
-            edges.append(GraphEdge(source=issue.id, target=issue.parent_id))
+        if issue.parent_id and issue.parent_id in issue_id_set:
+            edges.append(GraphEdge(source=f"issue-{issue.id}", target=f"issue-{issue.parent_id}"))
 
     return GraphResponse(nodes=nodes, edges=edges, labels=label_colors)

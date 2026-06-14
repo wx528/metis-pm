@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Select, Space } from "antd";
+import { Select, Space, Empty } from "antd";
 import { useNavigate } from "react-router-dom";
 import { graphApi, type GraphResponse, type GraphNode, type GraphParams } from "../../api/graph";
 import ForceGraph from "./ForceGraph";
@@ -69,8 +69,8 @@ export default function GraphView() {
   }, [loadData]);
 
   const handleNodeClick = useCallback((node: GraphNode) => {
-    if (node.type === "issue" && currentProject) {
-      navigate(`/projects/${currentProject.slug}/issues/${node.id}`);
+    if (node.type === "issue" && node.issue_id && currentProject) {
+      navigate(`/projects/${currentProject.slug}/issues/${node.issue_id}`);
     }
   }, [navigate, currentProject]);
 
@@ -148,7 +148,7 @@ export default function GraphView() {
             加载中...
           </div>
         )}
-        {data && !loading && (
+        {data && !loading && data.nodes.length > 0 && (
           <ForceGraph
             nodes={data.nodes}
             edges={data.edges}
@@ -156,6 +156,11 @@ export default function GraphView() {
             width={size.width}
             height={size.height}
           />
+        )}
+        {data && !loading && data.nodes.length === 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+            <Empty description="暂无数据，请先创建 Issue 或 Milestone" />
+          </div>
         )}
       </div>
 

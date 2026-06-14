@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import type { GraphNode, GraphEdge } from "../../api/graph";
 import NodePreview from "./NodePreview";
@@ -12,7 +12,7 @@ interface ForceGraphProps {
 }
 
 interface GraphNodeType {
-  id: number;
+  id: string;
   type: string;
   title: string;
   size: number;
@@ -24,15 +24,19 @@ interface GraphNodeType {
 }
 
 export default function ForceGraph({ nodes, edges, onNodeClick, width, height }: ForceGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mousePosRef = useRef({ x: 0, y: 0 });
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
     const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
     };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+    el.addEventListener("mousemove", handleMouseMove);
+    return () => el.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
   const graphNodes = useMemo(() =>
@@ -64,6 +68,9 @@ export default function ForceGraph({ nodes, edges, onNodeClick, width, height }:
 
   const handleNodeHover = useCallback((node: GraphNodeType | null) => {
     setHoveredNode(node?.__data || null);
+    if (node) {
+      setHoverPos({ ...mousePosRef.current });
+    }
   }, []);
 
   const nodeCanvasObject = useCallback((node: GraphNodeType, ctx: CanvasRenderingContext2D) => {
@@ -99,19 +106,22 @@ export default function ForceGraph({ nodes, edges, onNodeClick, width, height }:
     ctx.globalAlpha = 1;
   }, []);
 
+  const nodePointerAreaPaint = useCallback((node: GraphNodeType, color: string, ctx: CanvasRenderingContext2D) => {
+    const radius = node.type === "milestone" ? node.size : node.size / 2;
+    ctx.beginPath();
+    ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }, []);
+
   return (
-    <>
+    <div ref={containerRef}>
       <ForceGraph2D
         width={width}
         height={height}
         graphData={{ nodes: graphNodes, links: graphLinks }}
         nodeCanvasObject={nodeCanvasObject as any}
-        nodePointerAreaPaint={(node: GraphNodeType, color: string, ctx: CanvasRenderingContext2D) => {
-          ctx.beginPath();
-          ctx.arc(node.x || 0, node.y || 0, node.size / 2, 0, 2 * Math.PI);
-          ctx.fillStyle = color;
-          ctx.fill();
-        }}
+        nodePointerAreaPaint={nodePointerAreaPaint as any}
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
         onBackgroundClick={() => {}}
@@ -123,8 +133,8 @@ export default function ForceGraph({ nodes, edges, onNodeClick, width, height }:
         cooldownTicks={100}
       />
       {hoveredNode && (
-        <NodePreview node={hoveredNode} x={mousePos.x} y={mousePos.y} />
+        <NodePreview node={hoveredNode} x={hoverPos.x} y={hoverPos.y} />
       )}
-    </>
+    </div>
   );
 }

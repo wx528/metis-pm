@@ -1,9 +1,10 @@
 import { api } from "./client";
 
 export interface GraphNode {
-  id: number;
+  id: string;
   type: "milestone" | "issue";
   title: string;
+  issue_id?: number;
   priority?: string;
   status?: string;
   issue_type?: string;
@@ -16,8 +17,8 @@ export interface GraphNode {
 }
 
 export interface GraphEdge {
-  source: number;
-  target: number;
+  source: string;
+  target: string;
 }
 
 export interface GraphResponse {

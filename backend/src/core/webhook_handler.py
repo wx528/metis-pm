@@ -13,7 +13,7 @@ from src.models.git_integration import GitIntegration, IssueCommitLink, PRPlanLi
 from src.models.issue import Issue, IssueStatus
 from src.models.plan import Plan, PlanStatus
 from src.models.activity_log import ActivityLog
-from src.core.crypto import decrypt_secret
+from src.core.crypto import decrypt_value
 
 logger = logging.getLogger(__name__)
 
@@ -317,7 +317,7 @@ async def process_webhook(
         raise HTTPException(404, f"No active integration found for repo: {repo_url}")
     
     # 验证签名
-    stored_secret = decrypt_secret(integration.webhook_secret)
+    stored_secret = decrypt_value(integration.webhook_secret)
     if not verify_signature(
         str(payload).encode(),
         signature,

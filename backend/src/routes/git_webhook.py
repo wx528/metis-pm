@@ -10,7 +10,7 @@ from sqlalchemy import select, desc
 from src.core.dependencies import get_db
 from src.routes.auth import get_current_user
 from src.models.git_integration import GitIntegration, IssueCommitLink, PRPlanLink
-from src.core.crypto import encrypt_secret
+from src.core.crypto import encrypt_value
 from src.core.webhook_handler import process_webhook
 
 router = APIRouter()
@@ -140,7 +140,7 @@ async def receive_webhook(
         raise HTTPException(404, f"No active integration found for platform: {platform}")
     
     # 尝试每个配置的 secret
-    from src.core.crypto import decrypt_secret
+    from src.core.crypto import decrypt_value
     from src.core.webhook_handler import verify_signature
     
     payload_bytes = await request.body()
@@ -148,7 +148,7 @@ async def receive_webhook(
     
     for integration in integrations:
         try:
-            stored_secret = decrypt_secret(integration.webhook_secret)
+            stored_secret = decrypt_value(integration.webhook_secret)
             if verify_signature(payload_bytes, signature, stored_secret):
                 valid_integration = integration
                 break
@@ -232,7 +232,7 @@ async def create_git_integration(
         project_id=data.project_id,
         repo_url=data.repo_url,
         platform=data.platform,
-        webhook_secret=encrypt_secret(data.webhook_secret),
+        webhook_secret=encrypt_value(data.webhook_secret),
         webhook_url=webhook_url,
         auto_close_issue=data.auto_close_issue,
         auto_link_pr=data.auto_link_pr,
@@ -276,7 +276,7 @@ async def update_git_integration(
     if data.repo_url is not None:
         integration.repo_url = data.repo_url
     if data.webhook_secret is not None:
-        integration.webhook_secret = encrypt_secret(data.webhook_secret)
+        integration.webhook_secret = encrypt_value(data.webhook_secret)
     if data.auto_close_issue is not None:
         integration.auto_close_issue = data.auto_close_issue
     if data.auto_link_pr is not None:
@@ -339,7 +339,7 @@ async def regenerate_webhook_secret(
     
     # 生成新的 secret
     new_secret = secrets.token_urlsafe(32)
-    integration.webhook_secret = encrypt_secret(new_secret)
+    integration.webhook_secret = encrypt_value(new_secret)
     await db.commit()
     
     return {"secret": new_secret}

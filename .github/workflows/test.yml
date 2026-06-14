@@ -56,8 +56,8 @@ jobs:
       - name: Run tests
         env:
           SECRET_KEY: ci-test-secret-key-min-32-chars-long-enough
-          ADMIN_PASSWORD_HASH: "$2b$12$f5BJdfOBG9.FnlDcL1WfV.Trms.hb/HMrqE2YIIhGkfs4kgQrFMPK"
-          AGENT_PASSWORDS_JSON: '{"testagent": {"password_hash": "$2b$12$lPa/Jfp5VxvTgrh0gpuCU.qNLzrrGtzhQiFJwQ89DBH4NX7HfHaT6", "role": "agent"}}'
+          ADMIN_PASSWORD_HASH: "$2b$12$kz0o0nR.vjWHktFVHG.u5.VW8/sfQ4ipdjX/q3rx8h4wVBXi3B1C6"
+          AGENT_PASSWORDS_JSON: '{"testagent": {"password_hash": "$2b$12$jpcLx5GIO/Rn1YiWBJ1mtugo15wmEpIAy0dBC5qEFqXNoEVwjW66m", "role": "agent"}}'
           DATABASE_URL: sqlite+aiosqlite:///./test.db
           DEBUG: "true"
         run: |

@@ -26,7 +26,8 @@ api_router.include_router(comments.router, prefix="/issue-comments", tags=["评�
 api_router.include_router(feedback.router, prefix="/feedbacks", tags=["意见箱"])
 api_router.include_router(risk_alerts.router, prefix="/risk-alerts", tags=["风险告警"])
 
-# Copilot 路由仅在启用时注册
+# Copilot 路由：status 端点始终注册，其余仅在启用时注册
+api_router.include_router(copilot.status_router, prefix="/copilot", tags=["Copilot"])
 if os.getenv("PM_COPILOT_ENABLED", "false").lower() == "true":
     api_router.include_router(copilot.router, prefix="/copilot", tags=["Copilot"])
 

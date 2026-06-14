@@ -12,6 +12,9 @@ from src.routes.auth import get_current_user, get_admin_user
 logger = logging.getLogger("copilot.api")
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
+# status_router 始终注册，不需要认证（前端需要检测 Copilot 状态）
+status_router = APIRouter()
+
 _copilot_instance = None
 
 
@@ -61,8 +64,8 @@ async def copilot_scan(user: dict = Depends(get_admin_user)):
     return ScanResponse(report=report)
 
 
-@router.get("/status")
-async def copilot_status(user: dict = Depends(get_current_user)):
+@status_router.get("/status")
+async def copilot_status():
     copilot = get_copilot()
     return {
         "enabled": copilot is not None,

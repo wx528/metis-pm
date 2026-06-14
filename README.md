@@ -44,8 +44,8 @@ ADMIN_PASSWORD=your-secure-password
 
 ```bash
 cd backend
-pip install -r requirements.txt
-python main.py
+uv sync
+uv run python main.py
 # API: http://localhost:8000
 # Swagger: http://localhost:8000/docs
 ```

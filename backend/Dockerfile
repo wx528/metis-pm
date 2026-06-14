@@ -3,12 +3,10 @@ FROM python:3.11-slim AS deps
 
 WORKDIR /app
 
-# 系统依赖（bcrypt 编译需要）
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev && \
-    rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 # ─── Stage 2: 运行时 ──────────────────────────────────
 FROM python:3.11-slim
@@ -16,8 +14,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # 仅复制安装好的包
-COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=deps /usr/local/bin /usr/local/bin
+COPY --from=deps /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
 # 复制应用代码
 COPY . .
@@ -30,7 +28,7 @@ RUN mkdir -p /data/backups && chown -R pm:pm /data
 
 # 环境变量
 ENV PYTHONPATH=/app
-ENV DATABASE_URL=sqlite+aiosqlite:////data/project_manager.db
+ENV DATABASE_URL=sqlite+aiosqlite:////data/metis_pm.db
 
 EXPOSE 8000
 

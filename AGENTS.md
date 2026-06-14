@@ -16,7 +16,7 @@ backend/
 ├── mcp_server_mate.py       # First Mate MCP Server（多 Agent 架构）
 ├── mcp_server_tester.py     # Tester MCP Server（内部测试角色）
 ├── mcp_common.py            # MCP 共享工具与基类
-├── requirements.txt
+├── pyproject.toml
 ├── src/
 │   ├── settings.py          # 全局配置（Pydantic BaseSettings）
 │   ├── core/                # 跨路由共享的基础设施

@@ -54,30 +54,38 @@ class PMCopilot:
         logger.info(f"PMCopilot initialized (model={self.model or 'default'})")
 
     def scan(self) -> str:
-        result = self.agent.run_conversation(
-            user_message="""执行项目健康巡检：
+        try:
+            result = self.agent.run_conversation(
+                user_message="""执行项目健康巡检：
 1. get_project_metrics() 获取整体指标
 2. list_projects(status="active") 列出活跃项目
 3. list_issues(priority="P0", status="open") 检查 P0 未关闭 issue
 4. list_risk_alerts(status="open") 检查未解决告警
 5. 如有风险，create_risk_alert() 创建告警
 返回中文巡检报告。""",
-            conversation_history=None,
-        )
-        return result.get("final_response", "巡检完成")
+                conversation_history=None,
+            )
+            return result.get("final_response", "巡检完成")
+        except Exception as e:
+            logger.error("Copilot scan failed: %s", e)
+            return "巡检失败，AI 助手暂时不可用"
 
     def ask(self, question: str) -> str:
-        result = self.agent.run_conversation(
-            user_message=question,
-            conversation_history=self.history[-20:] if self.history else None,
-        )
-        response = result.get("final_response", "")
-        messages = result.get("messages", [])
-        if messages:
-            self.history.extend(messages)
-            if len(self.history) > 40:
-                self.history = self.history[-40:]
-        return response
+        try:
+            result = self.agent.run_conversation(
+                user_message=question,
+                conversation_history=self.history[-20:] if self.history else None,
+            )
+            response = result.get("final_response", "")
+            messages = result.get("messages", [])
+            if messages:
+                self.history.extend(messages)
+                if len(self.history) > 40:
+                    self.history = self.history[-40:]
+            return response
+        except Exception as e:
+            logger.error("Copilot ask failed: %s", e)
+            return "抱歉，AI 助手暂时不可用"
 
     def close(self):
         try:

@@ -64,14 +64,14 @@ class PMCopilot:
 返回中文巡检报告。""",
             conversation_history=None,
         )
-        return result.get("response", "巡检完成")
+        return result.get("final_response", "巡检完成")
 
     def ask(self, question: str) -> str:
         result = self.agent.run_conversation(
             user_message=question,
             conversation_history=self.history[-20:] if self.history else None,
         )
-        response = result.get("response", "")
+        response = result.get("final_response", "")
         messages = result.get("messages", [])
         if messages:
             self.history.extend(messages)

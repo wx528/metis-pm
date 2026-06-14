@@ -1,8 +1,8 @@
 # Project Manager System 架构文档
 
 > 人机协作项目管理系统架构设计
-> 版本: 1.3.0
-> 更新日期: 2026-06-12
+> 版本: 1.4.0
+> 更新日期: 2026-06-15
 
 ---
 
@@ -400,9 +400,150 @@ frontend/src/
 
 ---
 
-## 6. 多 Agent 协作工作流
+## 6. AI Copilot + TriggerHub + A2A 架构
 
-### 6.1 通信机制
+### 6.1 架构概览
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    FastAPI Backend                            │
+│                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────────┐  │
+│  │  TriggerHub  │───►│   Copilot    │    │  A2A Client   │  │
+│  │ (事件调度)    │    │ (内部 AI)    │    │ (外部 Agent)  │  │
+│  └──────┬───────┘    └──────┬───────┘    └───────┬───────┘  │
+│         │                   │                     │          │
+│  fire_event()        AIAgent.run_conversation()   │          │
+│  fire_p0_issue()     scan() / ask()               │          │
+│  fire_risk_alert()   try/except 隔离              │          │
+│  fire_overdue()                                     │          │
+│         │                                           │          │
+│         └──────────────┬────────────────────────────┘          │
+│                        │                                     │
+│                        ▼                                     │
+│              ┌──────────────────┐                            │
+│              │   A2A Registry   │                            │
+│              │ (Agent 注册表)    │                            │
+│              └──────────────────┘                            │
+└──────────────────────────────────────────────────────────────┘
+                         │ A2A Protocol
+                    ┌────▼────┐
+                    │OpenClaw │  ← 外部 Agent
+                    └─────────┘
+```
+
+### 6.2 可选启用架构
+
+所有 AI 功能均为可选，通过环境变量控制：
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `PM_COPILOT_ENABLED` | `false` | 启用 AI Copilot（嵌入式 pm-copilot-engine） |
+| `A2A_ENABLED` | `false` | 启用 A2A 协议（外部 Agent 通信） |
+| `A2A_AGENTS` | — | 预注册 Agent 列表（`id:url,id:url`） |
+
+关闭时系统作为完整独立的 PM 工具运行，零 AI 依赖。
+
+### 6.3 TriggerHub 事件调度
+
+TriggerHub 是系统事件到 AI 处理的桥梁：
+
+```python
+class TriggerHub:
+    def __init__(self, copilot_ask_fn=None, a2a_client=None):
+        self._copilot_ask_fn = copilot_ask_fn
+        self._a2a_client = a2a_client
+
+    def fire_event(self, trigger_type, source, payload, priority=5):
+        # 高优先级事件同时触发 Copilot 和 A2A
+        if priority >= 8:
+            self._dispatch_to_copilot(context, prompt)
+            self._dispatch_to_a2a(context, task)
+```
+
+| 事件类型 | 触发场景 | 默认优先级 |
+|----------|----------|-----------|
+| `p0_issue_created` | P0 Issue 创建 | 10 |
+| `risk_alert_created` | 风险告警创建 | 9 |
+| `milestone_overdue` | 里程碑超期 | 8 |
+| `plan_approved` | 计划审批通过 | 5 |
+| `scheduled_check` | 定时巡检 | 5 |
+
+### 6.4 AI Copilot（嵌入式库）
+
+Copilot 基于 [pm-copilot-engine](https://pypi.org/project/pm-copilot-engine/)，以嵌入式库方式集成：
+
+```python
+# copilot/scheduler.py
+class PMCopilot:
+    def __init__(self):
+        self.agent = AIAgent(
+            quiet_mode=True,
+            skip_context_files=True,
+            skip_memory=True,
+            ephemeral_system_prompt=SYSTEM_PROMPT,
+            enabled_toolsets=["pm"],
+            max_iterations=25,
+        )
+
+    def scan(self) -> str: ...   # 项目健康巡检
+    def ask(self, question) -> str: ...  # 问答
+```
+
+**关键设计决策**：
+
+| 决策 | 原因 |
+|------|------|
+| 嵌入式库（非 MCP Server） | 工具直接调用业务函数，零序列化开销 |
+| try/except 隔离 | AI 引擎崩溃不影响 PM 系统 API |
+| `enabled_toolsets=["pm"]` | 业务工具通过 toolset 隔离 |
+| `skip_context_files=True` | PM 系统不需要文件上下文 |
+
+### 6.5 A2A 协议（Agent-to-Agent）
+
+A2A 模块支持 PM 系统与外部 AI Agent 之间的任务委派和发现：
+
+```
+PM 系统 (A2A Client)
+  → POST /tasks → 外部 Agent (A2A Server)
+  ← TaskArtifact ← 外部 Agent 返回结果
+```
+
+**核心模块**：
+
+| 模块 | 职责 |
+|------|------|
+| `src/a2a/registry.py` | Agent 注册表：按能力查找匹配 Agent |
+| `src/a2a/client.py` | A2A Client：委派任务、发现 Agent、轮询结果 |
+| `src/a2a/server.py` | A2A Server：发布 Agent Card、接收外部任务 |
+| `src/a2a/api.py` | 管理 API：注册/发现/委派端点 |
+
+**A2A API 端点**：
+
+| 端点 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/v1/a2a/agent-card` | GET | 无 | PM 系统的 Agent Card |
+| `/.well-known/agent-card.json` | GET | 无 | A2A 规范端点 |
+| `/api/v1/a2a/agents` | GET | JWT | 列出已注册 Agent |
+| `/api/v1/a2a/agents` | POST | admin | 注册 Agent |
+| `/api/v1/a2a/discover` | POST | JWT | 自动发现 Agent |
+| `/api/v1/a2a/delegate` | POST | JWT | 委派任务 |
+| `/api/v1/a2a/tasks` | POST | 无 | 外部 Agent 提交任务 |
+
+### 6.6 调度链路
+
+```
+高优先级事件 (P0 issue / 风险 / 超期)
+  → TriggerHub.fire_event()
+    → _dispatch_to_copilot()  → Copilot 内部处理（巡检、告警、建议）
+    → _dispatch_to_a2a()      → 查找匹配能力的外部 Agent → 委派任务
+```
+
+---
+
+## 7. 多 Agent 协作工作流
+
+### 7.1 通信机制
 
 ```
 ┌──────────┐   notify_role    ┌──────────────┐
@@ -418,7 +559,7 @@ frontend/src/
 └──────────┘                  └──────────┘
 ```
 
-### 6.2 典型工作流
+### 7.2 典型工作流
 
 **开发 → 审查 → 测试 → 完成**
 
@@ -430,7 +571,7 @@ frontend/src/
 6. **Tester** 收到通知，执行测试，添加测试报告
 7. 测试通过，更新 Issue 状态为 closed
 
-### 6.3 Agent 状态面板
+### 7.3 Agent 状态面板
 
 Dashboard 页面嵌入 `AgentActivityPanel`，实时显示：
 - 各 Agent 在线状态（online/idle/offline）
@@ -442,9 +583,9 @@ Dashboard 页面嵌入 `AgentActivityPanel`，实时显示：
 
 ---
 
-## 7. 部署架构
+## 8. 部署架构
 
-### 7.1 Docker Compose（推荐）
+### 8.1 Docker Compose（推荐）
 
 ```
 ┌─────────────────────────────────────────┐
@@ -468,7 +609,7 @@ Dashboard 页面嵌入 `AgentActivityPanel`，实时显示：
     └─────────────────────┘
 ```
 
-### 7.2 环境变量
+### 8.2 环境变量
 
 ```env
 # 必须设置
@@ -491,7 +632,7 @@ FRONTEND_PORT=8080
 MCP_PORT=9000
 ```
 
-### 7.3 启动方式
+### 8.3 启动方式
 
 ```bash
 # Docker 一键启动（推荐）
@@ -504,9 +645,9 @@ cd frontend && npm run dev
 
 ---
 
-## 8. 数据流
+## 9. 数据流
 
-### 8.1 Issue 生命周期
+### 9.1 Issue 生命周期
 
 ```
 用户/Agent 创建
@@ -526,7 +667,7 @@ cd frontend && npm run dev
                └─────────┘
 ```
 
-### 8.2 SQLite 并发优化
+### 9.2 SQLite 并发优化
 
 系统使用 SQLite + aiosqlite 作为数据库，已启用 **WAL 模式**（Write-Ahead Logging）：
 
@@ -551,7 +692,7 @@ cd frontend && npm run dev
 - `pool_timeout=30`（等待可用连接超时）
 - `pool_recycle=3600`（连接回收时间）
 
-### 8.3 Plan 审批流
+### 9.3 Plan 审批流
 
 ```
 Agent 提议 → pending_approval → 用户审批通过 → active → Agent 更新进展
@@ -559,7 +700,7 @@ Agent 提议 → pending_approval → 用户审批通过 → active → Agent �
                用户拒绝 → abandoned（可填写拒绝原因）
 ```
 
-### 8.4 通知推送流
+### 9.4 通知推送流
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -581,9 +722,9 @@ Agent 提议 → pending_approval → 用户审批通过 → active → Agent �
 
 ---
 
-## 9. 监控
+## 10. 监控
 
-### 9.1 Prometheus 指标
+### 10.1 Prometheus 指标
 
 | 指标 | 类型 | 说明 |
 |------|------|------|
@@ -596,7 +737,7 @@ Agent 提议 → pending_approval → 用户审批通过 → active → Agent �
 | `pm_handovers_total` | Counter | 交接评论计数 |
 | `pm_notifications_sent_total` | Counter | 通知发送计数 |
 
-### 9.2 健康检查
+### 10.2 健康检查
 
 | 端点 | 认证 | 说明 |
 |------|------|------|
@@ -607,20 +748,22 @@ Agent 提议 → pending_approval → 用户审批通过 → active → Agent �
 
 ---
 
-## 10. 技术栈总结
+## 11. 技术栈总结
 
 | 层级 | 技术 |
 |------|------|
 | 后端 | Python 3.11, FastAPI, SQLAlchemy 2.0 (async), SQLite (WAL), JWT, bcrypt, Fernet |
 | 前端 | React 19, TypeScript, Ant Design 6, Vite 8, React Router 7, React Query, @dnd-kit |
 | MCP | FastMCP, Streamable HTTP, httpx (指数退避重试) |
+| AI 引擎 | pm-copilot-engine (可选，嵌入式库) |
+| A2A | Agent-to-Agent Protocol (可选，Google A2A v1.0) |
 | 监控 | Prometheus, prometheus-fastapi-instrumentator |
 | 部署 | Docker, Docker Compose, Nginx |
 | 网络 | Tailscale (可选，用于跨设备内网访问) |
 
 ---
 
-## 11. 变更历史
+## 12. 变更历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
@@ -628,3 +771,4 @@ Agent 提议 → pending_approval → 用户审批通过 → active → Agent �
 | 1.1.0 | 2026-06-10 | 多 Agent 协作：notify_role、handover 评论、Agent 状态面板、MCP HTTP 模式、容错机制、监控 API |
 | 1.2.0 | 2026-06-10 | MCP Server 模块化拆分：1746 行单文件 → 6 个模块（shared/agent/mate/tester/registrar） |
 | 1.3.0 | 2026-06-10 | SSE 通知 + Handover 已读回执、消息队列 + SQLite 持久化、bcrypt 密码哈希、工作流条件分支/并行/模板 |
+| 1.4.0 | 2026-06-15 | AI Copilot（pm-copilot-engine 嵌入式库）、TriggerHub 事件调度、A2A 协议（外部 Agent 委派）、故障隔离 |

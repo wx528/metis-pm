@@ -16,6 +16,9 @@ backend/
 ├── mcp_server_mate.py       # First Mate MCP Server（多 Agent 架构）
 ├── mcp_server_tester.py     # Tester MCP Server（内部测试角色）
 ├── mcp_common.py            # MCP 共享工具与基类
+├── copilot/                 # AI Copilot（可选，PM_COPILOT_ENABLED=true）
+│   ├── scheduler.py         # PMCopilot 类：持有 AIAgent，提供 scan/ask
+│   └── tools.py             # PM toolset 工具注册（list_issues 等）
 ├── pyproject.toml
 ├── src/
 │   ├── settings.py          # 全局配置（Pydantic BaseSettings）
@@ -25,7 +28,13 @@ backend/
 │   │   ├── crypto.py        # 加密工具
 │   │   ├── activity.py      # 活动日志
 │   │   ├── notification.py  # 通知 + SSE
+│   │   ├── trigger_hub.py   # TriggerHub 事件调度中心
 │   │   └── workflow_engine.py
+│   ├── a2a/                 # A2A 协议模块（可选，A2A_ENABLED=true）
+│   │   ├── registry.py      # Agent 注册表
+│   │   ├── client.py        # A2A Client：委派任务、发现 Agent
+│   │   ├── server.py        # A2A Server：Agent Card + 接收任务
+│   │   └── api.py           # A2A 管理 API 路由
 │   ├── models/              # SQLAlchemy ORM（每个实体一个文件）
 │   ├── schemas/             # Pydantic 请求/响应模型
 │   └── routes/              # FastAPI 路由

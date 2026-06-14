@@ -90,6 +90,12 @@ docker compose up -d
 │  (for humans)   │                   │                │  metis_pm.db
 └──────────────┘                   └───────┬────────┘
                                           │
+                                    ┌─────┴──────┐
+                                    │ TriggerHub  │ ← System events
+                                    │  Copilot    │ ← pm-copilot-engine (optional)
+                                    │  A2A Client │ ← External agents (optional)
+                                    └─────┬──────┘
+                                          │
                                      MCP Server (Streamable HTTP)
                                      ┌──────┴───────┐
                                      │ Unified Entry │ :9000
@@ -153,6 +159,38 @@ When enabled, the Copilot can:
 - Generate daily/weekly reports
 
 When disabled (`PM_COPILOT_ENABLED=false`), the system runs as a complete standalone PM tool — no AI dependency.
+
+**Fault isolation**: Copilot methods (`scan`, `ask`) are wrapped in try/except — if the AI engine crashes, the PM system continues serving API requests normally.
+
+### A2A Protocol (Optional)
+
+Metis PM supports the [A2A (Agent-to-Agent) Protocol](https://github.com/google/A2A) for dispatching tasks to external AI agents:
+
+```env
+A2A_ENABLED=true
+A2A_AGENTS=code-reviewer:http://localhost:3100,risk-analyzer:http://remote-server:3100
+```
+
+When enabled, high-priority events (P0 issues, risk alerts, overdue milestones) are automatically dispatched to matching external agents via A2A. PM system acts as an A2A Client — no inbound ports required.
+
+| A2A Endpoint | Description |
+|--------------|-------------|
+| `GET /api/v1/a2a/agent-card` | PM system's Agent Card |
+| `GET /api/v1/a2a/agents` | List registered agents |
+| `POST /api/v1/a2a/agents` | Register an agent (admin) |
+| `POST /api/v1/a2a/discover` | Auto-discover agents |
+| `POST /api/v1/a2a/delegate` | Delegate a task |
+
+### TriggerHub
+
+TriggerHub is the event dispatch center that connects system events to Copilot and A2A agents:
+
+```
+System Event (P0 issue / risk / overdue)
+  → TriggerHub.fire_event()
+    → _dispatch_to_copilot()   → Copilot internal processing
+    → _dispatch_to_a2a()       → Find matching external agent → Delegate task
+```
 
 ## MCP Tools
 
@@ -316,6 +354,16 @@ DELETE /api/v1/risk-alerts/{id}
 POST   /api/v1/copilot/chat
 POST   /api/v1/copilot/scan
 GET    /api/v1/copilot/status
+```
+
+### A2A (Agent-to-Agent)
+```
+GET    /api/v1/a2a/agent-card
+GET    /api/v1/a2a/agents
+POST   /api/v1/a2a/agents
+POST   /api/v1/a2a/discover
+POST   /api/v1/a2a/delegate
+POST   /api/v1/a2a/tasks
 ```
 
 ## Security

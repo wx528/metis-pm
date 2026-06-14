@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.4.0] - 2026-06-15
+
+### 架构升级：AI Copilot、TriggerHub 事件调度、A2A 协议
+
+#### AI Copilot（嵌入式库）
+
+| 变更 | 说明 |
+|------|------|
+| `copilot/scheduler.py` | PMCopilot 类：持有 AIAgent 实例，提供 `scan()`（巡检）和 `ask()`（问答） |
+| `copilot/tools.py` | PM toolset 工具注册：list_issues、create_risk_alert 等业务函数 |
+| 故障隔离 | `scan()` / `ask()` 包裹 try/except，AI 引擎异常不影响 PM 系统 API |
+| 可选启用 | `PM_COPILOT_ENABLED=true` 启用，关闭时零 AI 依赖 |
+
+#### TriggerHub 事件调度
+
+| 变更 | 说明 |
+|------|------|
+| `src/core/trigger_hub.py` | 事件调度中心：高优先级事件同时触发 Copilot 和 A2A |
+| 事件类型 | `p0_issue_created` / `risk_alert_created` / `milestone_overdue` / `plan_approved` / `scheduled_check` |
+| 优先级阈值 | priority >= 8 触发 AI 调度（Copilot + A2A） |
+
+#### A2A 协议（Agent-to-Agent）
+
+| 变更 | 说明 |
+|------|------|
+| `src/a2a/registry.py` | Agent 注册表：按能力查找匹配 Agent |
+| `src/a2a/client.py` | A2A Client：委派任务、发现 Agent、轮询结果 |
+| `src/a2a/server.py` | A2A Server：发布 Agent Card、接收外部任务 |
+| `src/a2a/api.py` | 管理 API：注册/发现/委派端点（含 admin 认证） |
+| `/.well-known/agent-card.json` | A2A 规范端点 |
+| 可选启用 | `A2A_ENABLED=true` 启用，`A2A_AGENTS` 预注册 Agent |
+
+#### Bug 修复
+
+| 修复 | 说明 |
+|------|------|
+| `scheduler.py` 返回值 key | `result.get("response")` → `result.get("final_response")` |
+| pm-copilot-engine toolset | 添加 `"pm"` toolset 占位定义，避免 KeyError |
+
+---
+
 ## [1.3.0] - 2026-06-10
 
 ### 架构升级：SSE 通知、消息队列、安全增强与工作流灵活性

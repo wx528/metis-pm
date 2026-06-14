@@ -90,6 +90,12 @@ docker compose up -d
 │  (你用的)    │                   │             │  metis_pm.db
 └─────────────┘                   └──────┬──────┘
                                         │
+                                  ┌─────┴──────┐
+                                  │ TriggerHub  │ ← 系统事件
+                                  │  Copilot    │ ← pm-copilot-engine（可选）
+                                  │  A2A Client │ ← 外部 Agent（可选）
+                                  └─────┬──────┘
+                                        │
                                    MCP Server (Streamable HTTP)
                                    ┌─────┴──────┐
                                    │  统一入口   │ :9000
@@ -153,6 +159,38 @@ PM_MODEL=gpt-4o
 - 生成日报/周报
 
 关闭时（`PM_COPILOT_ENABLED=false`），系统作为完整独立的 PM 工具运行 — 零 AI 依赖。
+
+**故障隔离**：Copilot 方法（`scan`、`ask`）均包裹 try/except — AI 引擎崩溃不影响 PM 系统 API 正常服务。
+
+### A2A 协议（可选）
+
+Metis PM 支持 [A2A（Agent-to-Agent）协议](https://github.com/google/A2A)，可向外部 AI Agent 委派任务：
+
+```env
+A2A_ENABLED=true
+A2A_AGENTS=code-reviewer:http://localhost:3100,risk-analyzer:http://remote-server:3100
+```
+
+启用后，高优先级事件（P0 Issue、风险告警、超期里程碑）会自动通过 A2A 委派给匹配的外部 Agent。PM 系统仅作为 A2A Client，无需开放入站端口。
+
+| A2A 端点 | 说明 |
+|----------|------|
+| `GET /api/v1/a2a/agent-card` | PM 系统的 Agent Card |
+| `GET /api/v1/a2a/agents` | 列出已注册 Agent |
+| `POST /api/v1/a2a/agents` | 注册 Agent（需 admin） |
+| `POST /api/v1/a2a/discover` | 自动发现 Agent |
+| `POST /api/v1/a2a/delegate` | 委派任务 |
+
+### TriggerHub
+
+TriggerHub 是事件调度中心，将系统事件连接到 Copilot 和 A2A Agent：
+
+```
+系统事件（P0 Issue / 风险 / 超期）
+  → TriggerHub.fire_event()
+    → _dispatch_to_copilot()   → Copilot 内部处理
+    → _dispatch_to_a2a()       → 查找匹配的外部 Agent → 委派任务
+```
 
 ## MCP 工具
 
@@ -306,6 +344,16 @@ DELETE /api/v1/risk-alerts/{id}
 POST   /api/v1/copilot/chat
 POST   /api/v1/copilot/scan
 GET    /api/v1/copilot/status
+```
+
+### A2A（Agent-to-Agent）
+```
+GET    /api/v1/a2a/agent-card
+GET    /api/v1/a2a/agents
+POST   /api/v1/a2a/agents
+POST   /api/v1/a2a/discover
+POST   /api/v1/a2a/delegate
+POST   /api/v1/a2a/tasks
 ```
 
 ## 安全说明

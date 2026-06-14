@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from src.core.dependencies import get_db
+from src.core.trigger_hub import get_trigger_hub
 from src.models.risk_alert import RiskAlert, RiskAlertLevel, RiskAlertSource, RiskAlertStatus
 from src.schemas.risk_alert import RiskAlertCreate, RiskAlertUpdate, RiskAlertRead, RiskAlertListResponse
 from src.routes.auth import get_current_user
@@ -39,6 +40,13 @@ async def create_risk_alert(
     db.add(alert)
     await db.commit()
     await db.refresh(alert)
+
+    # 高级别告警触发 Copilot
+    if alert.level in (RiskAlertLevel.CRITICAL, RiskAlertLevel.HIGH):
+        get_trigger_hub().fire_event("risk_alert_created", str(alert.id), {
+            "alert_id": alert.id, "level": str(alert.level), "project_id": alert.project_id
+        })
+
     return alert
 
 

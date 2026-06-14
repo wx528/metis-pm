@@ -19,18 +19,31 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger("copilot.tools")
 
+# 模块级同步引擎，复用避免资源泄漏
+_sync_engine = None
+_sync_session_factory = None
+
 
 def _get_sync_session():
-    """获取同步数据库 session（引擎工具调用是同步的）"""
-    import asyncio
-    from src.core.database import AsyncSessionLocal
-    from sqlalchemy.orm import Session
+    """获取同步数据库 session（引擎工具调用是同步的）
+
+    复用模块级引擎实例，避免每次调用都 create_engine。
+    """
+    global _sync_engine, _sync_session_factory
+    from sqlalchemy.orm import Session, sessionmaker
     from sqlalchemy import create_engine
     from src.settings import settings
 
-    url = settings.DATABASE_URL.replace("+aiosqlite", "").replace("+asyncpg", "")
-    engine = create_engine(url, connect_args={"check_same_thread": False} if "sqlite" in url else {})
-    return Session(engine)
+    if _sync_engine is None:
+        url = settings.DATABASE_URL.replace("+aiosqlite", "").replace("+asyncpg", "")
+        _sync_engine = create_engine(
+            url,
+            connect_args={"check_same_thread": False} if "sqlite" in url else {},
+            pool_pre_ping=True,
+        )
+        _sync_session_factory = sessionmaker(bind=_sync_engine)
+
+    return _sync_session_factory()
 
 
 def _serialize_issue(issue):
@@ -92,16 +105,22 @@ def get_project_detail(project_id: int = 0, **kwargs) -> str:
 
 
 def list_issues(project_id: int = 0, status: str = "", priority: str = "", limit: int = 20, **kwargs) -> str:
-    from src.models.issue import Issue
+    from src.models.issue import Issue, IssueStatus, IssuePriority
     session = _get_sync_session()
     try:
         q = session.query(Issue)
         if project_id:
             q = q.filter(Issue.project_id == project_id)
         if status:
-            q = q.filter(Issue.status == status)
+            try:
+                q = q.filter(Issue.status == IssueStatus(status))
+            except ValueError:
+                pass
         if priority:
-            q = q.filter(Issue.priority == priority)
+            try:
+                q = q.filter(Issue.priority == IssuePriority(priority))
+            except ValueError:
+                pass
         issues = q.order_by(Issue.created_at.desc()).limit(limit).all()
         return json.dumps({
             "count": len(issues),
@@ -172,14 +191,20 @@ def update_issue_status(issue_id: int = 0, status: str = "", **kwargs) -> str:
 
 
 def list_risk_alerts(status: str = "", level: str = "", limit: int = 20, **kwargs) -> str:
-    from src.models.risk_alert import RiskAlert
+    from src.models.risk_alert import RiskAlert, RiskAlertStatus, RiskAlertLevel
     session = _get_sync_session()
     try:
         q = session.query(RiskAlert)
         if status:
-            q = q.filter(RiskAlert.status == status)
+            try:
+                q = q.filter(RiskAlert.status == RiskAlertStatus(status))
+            except ValueError:
+                pass
         if level:
-            q = q.filter(RiskAlert.level == level)
+            try:
+                q = q.filter(RiskAlert.level == RiskAlertLevel(level))
+            except ValueError:
+                pass
         alerts = q.order_by(RiskAlert.created_at.desc()).limit(limit).all()
         return json.dumps({
             "count": len(alerts),
@@ -220,7 +245,7 @@ def create_risk_alert(title: str = "", description: str = "", level: str = "medi
 
 def get_project_metrics(**kwargs) -> str:
     from src.models.project import Project
-    from src.models.issue import Issue, IssueStatus
+    from src.models.issue import Issue, IssueStatus, IssuePriority
     from src.models.risk_alert import RiskAlert, RiskAlertStatus
     session = _get_sync_session()
     try:
@@ -228,10 +253,11 @@ def get_project_metrics(**kwargs) -> str:
         open_issues = session.query(Issue).filter(Issue.status == IssueStatus.OPEN).count()
         in_progress = session.query(Issue).filter(Issue.status == IssueStatus.IN_PROGRESS).count()
         p0_open = session.query(Issue).filter(
-            Issue.priority == "P0", Issue.status.in_(["open", "in_progress"])
+            Issue.priority == IssuePriority.P0,
+            Issue.status.in_([IssueStatus.OPEN, IssueStatus.IN_PROGRESS])
         ).count()
         open_alerts = session.query(RiskAlert).filter(
-            RiskAlert.status.in_(["open", "acknowledged"])
+            RiskAlert.status.in_([RiskAlertStatus.OPEN, RiskAlertStatus.ACKNOWLEDGED])
         ).count()
         return json.dumps({
             "active_projects": active_projects,
@@ -246,6 +272,7 @@ def get_project_metrics(**kwargs) -> str:
 
 def register_all_tools():
     """将所有 PM 工具注册到引擎的 registry。"""
+    import inspect
     from pm_copilot_engine import registry, TOOLSETS
 
     tools = [
@@ -299,12 +326,23 @@ def register_all_tools():
          {"type": "object", "properties": {}}, get_project_metrics, "📊"),
     ]
 
+    def _make_handler(fn):
+        """创建安全的 handler 适配器，只传递函数接受的参数。"""
+        sig = inspect.signature(fn)
+        accepts_kwargs = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+        if accepts_kwargs:
+            return lambda args, **kw: fn(**args, **kw)
+        valid_params = set(sig.parameters.keys())
+        return lambda args, **kw: fn(**{k: v for k, v in args.items() if k in valid_params})
+
     for name, desc, schema, handler, emoji in tools:
         registry.register(
             name=name,
             toolset="pm",
             schema={"name": name, "description": desc, "parameters": schema},
-            handler=lambda args, h=handler, **kw: h(**args, **kw),
+            handler=_make_handler(handler),
             emoji=emoji,
         )
 

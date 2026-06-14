@@ -447,6 +447,12 @@ async def lifespan(app: FastAPI):
             from src.routes.copilot import set_copilot
             copilot_instance = PMCopilot()
             set_copilot(copilot_instance)
+
+            # 激活 TriggerHub：将 Copilot 的 ask 方法注入
+            from src.core.trigger_hub import TriggerHub, set_trigger_hub
+            hub = TriggerHub(copilot_ask_fn=copilot_instance.ask)
+            set_trigger_hub(hub)
+
             logger.info("PM Copilot enabled and initialized")
         except Exception as e:
             logger.error(f"Failed to initialize PM Copilot: {e}")
@@ -459,6 +465,17 @@ async def lifespan(app: FastAPI):
     for task in tasks:
         task.cancel()
     await message_queue.stop()
+
+    # 清理 Copilot 资源
+    if copilot_enabled:
+        try:
+            from src.routes.copilot import get_copilot
+            copilot = get_copilot()
+            if copilot:
+                copilot.close()
+                logger.info("PM Copilot resources released")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup Copilot: {e}")
 
 
 app = FastAPI(

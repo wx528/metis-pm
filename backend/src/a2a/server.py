@@ -99,16 +99,30 @@ class A2ATaskStatus(BaseModel):
     updated_at: str = ""
 
 
-# ── 内存任务存储 ─────────────────────────────────────────
+# ── 任务存储（MVP: 内存字典，重启丢失；生产环境应替换为数据库） ──
 
 _tasks_store: dict[str, A2ATaskStatus] = {}
 
 
-# ── Agent Card 端点 ─────────────────────────────────────
+# ── well-known 路由（A2A 规范要求） ──────────────────────
+
+well_known_router = APIRouter()
+
+
+@well_known_router.get("/.well-known/agent-card.json")
+async def get_well_known_agent_card(request: Request):
+    """A2A 规范端点：/.well-known/agent-card.json"""
+    card = AGENT_CARD.copy()
+    base = str(request.base_url).rstrip("/")
+    card["url"] = f"{base}/a2a"
+    return card
+
+
+# ── Agent Card 端点（兼容路径） ─────────────────────────
 
 @router.get("/agent-card")
 async def get_agent_card(request: Request):
-    """返回 PM 系统的 Agent Card"""
+    """返回 PM 系统的 Agent Card（兼容路径，规范路径为 /.well-known/agent-card.json）"""
     card = AGENT_CARD.copy()
     card["url"] = str(request.base_url).rstrip("/") + "/a2a"
     return card

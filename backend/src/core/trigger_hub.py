@@ -59,17 +59,18 @@ class TriggerHub:
         try:
             from src.a2a.client import get_a2a_client
             client = get_a2a_client()
-            # 异步调用需要事件循环
+            coro = client.delegate_to_capability(capability, description, context.payload)
+            # 尝试在已有事件循环中调度，否则在新线程中运行
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(
-                    client.delegate_to_capability(capability, description, context.payload)
-                )
+                loop.create_task(coro)
             except RuntimeError:
-                # 没有运行中的事件循环，创建新任务
-                asyncio.create_task(
-                    client.delegate_to_capability(capability, description, context.payload)
-                )
+                # 没有运行中的事件循环，在新线程中运行
+                import threading
+                def _run():
+                    asyncio.run(coro)
+                t = threading.Thread(target=_run, daemon=True)
+                t.start()
             logger.info("Trigger dispatched to A2A agent: %s:%s (capability=%s)",
                         context.trigger_type.value, context.source, capability)
             return True
@@ -82,12 +83,12 @@ class TriggerHub:
         return True
 
     def fire_scheduled(self, job_name: str, payload: Optional[dict] = None) -> bool:
-        ctx = TriggerContext(TriggerType.SCHEDULED, job_name, payload or {})
+        ctx = TriggerContext(TriggerType.SCHEDULED, job_name, payload or {}, priority=5)
         self.fire(ctx)
-        if ctx.priority >= 5:
-            prompt = f"[定时触发] {job_name}，请检查相关项目状态。"
-            return self._dispatch_to_copilot(ctx, prompt)
-        return True
+        prompt = f"[定时触发] {job_name}，请检查相关项目状态。"
+        copilot_ok = self._dispatch_to_copilot(ctx, prompt)
+        a2a_ok = self._dispatch_to_a2a(ctx, prompt, "project-overview")
+        return copilot_ok or a2a_ok
 
     def fire_event(self, event_type: str, entity_id: str, payload: Optional[dict] = None) -> bool:
         priority = 7 if event_type in ("task_overdue", "risk_critical", "p0_issue_created") else 4

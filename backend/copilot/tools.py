@@ -28,6 +28,9 @@ def _get_sync_session():
     """获取同步数据库 session（引擎工具调用是同步的）
 
     复用模块级引擎实例，避免每次调用都 create_engine。
+
+    注意：此同步引擎与 FastAPI 的异步引擎独立，SQLite 下可能产生 WAL 锁竞争。
+    所有使用此 session 的函数必须确保 session.close() 在 finally 中调用。
     """
     global _sync_engine, _sync_session_factory
     from sqlalchemy.orm import Session, sessionmaker

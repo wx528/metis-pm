@@ -468,10 +468,16 @@ async def lifespan(app: FastAPI):
             agent_count = len(registry.list_active())
             logger.info("A2A enabled, %d agent(s) registered", agent_count)
 
-            # 在 TriggerHub 中启用 A2A 委派
-            from src.core.trigger_hub import get_trigger_hub
+            # 确保 TriggerHub 是真实实例（不是 NoOp），即使 Copilot 未启用
+            from src.core.trigger_hub import TriggerHub, NoOpTriggerHub, set_trigger_hub, get_trigger_hub
             hub = get_trigger_hub()
-            hub.enable_a2a(True)
+            if isinstance(hub, NoOpTriggerHub):
+                # NoOpTriggerHub，需要替换为真实实例
+                new_hub = TriggerHub(a2a_enabled=True)
+                set_trigger_hub(new_hub)
+            else:
+                # 已有真实 TriggerHub（Copilot 已创建），只需启用 A2A
+                hub.enable_a2a(True)
         except Exception as e:
             logger.error(f"Failed to initialize A2A: {e}")
     else:

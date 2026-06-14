@@ -12,14 +12,17 @@ A2A 管理 API：注册、发现、管理外部 Agent
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from src.a2a.registry import AgentCard, AgentSkill, get_registry
 from src.a2a.client import get_a2a_client
+from src.routes.auth import get_current_user, get_admin_user
 
 logger = logging.getLogger("a2a.api")
-router = APIRouter()
+
+# 管理 API 需要认证
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 # ── Pydantic Models ─────────────────────────────────────
@@ -56,7 +59,7 @@ async def list_agents():
 
 
 @router.post("/agents")
-async def register_agent(req: AgentRegisterRequest):
+async def register_agent(req: AgentRegisterRequest, user: dict = Depends(get_admin_user)):
     """手动注册一个外部 A2A Agent"""
     registry = get_registry()
     if registry.get(req.agent_id):
@@ -78,7 +81,7 @@ async def register_agent(req: AgentRegisterRequest):
 
 
 @router.delete("/agents/{agent_id}")
-async def unregister_agent(agent_id: str):
+async def unregister_agent(agent_id: str, user: dict = Depends(get_admin_user)):
     """注销一个外部 A2A Agent"""
     registry = get_registry()
     if not registry.unregister(agent_id):

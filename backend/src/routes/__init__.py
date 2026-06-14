@@ -32,8 +32,9 @@ if os.getenv("PM_COPILOT_ENABLED", "false").lower() == "true":
     api_router.include_router(copilot.router, prefix="/copilot", tags=["Copilot"])
 
 # A2A 路由：始终注册，外部 Agent 可通过 A2A 协议与 PM 系统交互
-from src.a2a.server import router as a2a_router
+from src.a2a.server import router as a2a_router, well_known_router as a2a_well_known
 api_router.include_router(a2a_router, tags=["A2A"])
+api_router.include_router(a2a_well_known, tags=["A2A"])
 
 # A2A 管理 API
 from src.a2a.api import router as a2a_api_router

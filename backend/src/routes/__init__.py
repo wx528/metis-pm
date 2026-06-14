@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows, agent_memory, project_registrations, agent_status, monitoring, comments, feedback, git_webhook, graph
+from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows, agent_memory, project_registrations, agent_status, monitoring, comments, feedback, git_webhook, graph, risk_alerts, copilot
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -23,4 +23,6 @@ api_router.include_router(monitoring.public_router, prefix="/monitoring", tags=[
 api_router.include_router(monitoring.router, prefix="/monitoring", tags=["系统监控"])
 api_router.include_router(comments.router, prefix="/issue-comments", tags=["评论管理"])
 api_router.include_router(feedback.router, prefix="/feedbacks", tags=["意见箱"])
+api_router.include_router(risk_alerts.router, prefix="/risk-alerts", tags=["风险告警"])
+api_router.include_router(copilot.router, prefix="/copilot", tags=["Copilot"])
 api_router.include_router(git_webhook.router, prefix="", tags=["Git Webhook"])

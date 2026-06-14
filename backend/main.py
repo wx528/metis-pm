@@ -435,6 +435,24 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_collect_system_metrics()),
         asyncio.create_task(_daily_sqlite_backup()),
     ]
+
+    # ── Copilot 启动 ──
+    copilot_enabled = os.getenv("PM_COPILOT_ENABLED", "false").lower() == "true"
+    if copilot_enabled:
+        try:
+            from copilot.tools import register_all_tools
+            register_all_tools()
+
+            from copilot.scheduler import PMCopilot
+            from src.routes.copilot import set_copilot
+            copilot_instance = PMCopilot()
+            set_copilot(copilot_instance)
+            logger.info("PM Copilot enabled and initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize PM Copilot: {e}")
+    else:
+        logger.info("PM Copilot disabled (set PM_COPILOT_ENABLED=true to enable)")
+
     yield
     
     # 清理

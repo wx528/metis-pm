@@ -9,6 +9,7 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Board from "./pages/Board";
+import Graph from "./pages/Graph";
 import Workflows from "./pages/Workflows";
 import Issues from "./pages/Issues";
 import IssueDetail from "./pages/IssueDetail";
@@ -73,6 +74,7 @@ function ThemedApp() {
               {/* 新路由：带项目 slug */}
               <Route path="projects/:projectSlug/dashboard" element={<Dashboard />} />
               <Route path="projects/:projectSlug/board" element={<Board />} />
+              <Route path="projects/:projectSlug/graph" element={<Graph />} />
               <Route path="projects/:projectSlug/issues" element={<Issues />} />
               <Route path="projects/:projectSlug/issues/:id" element={<IssueDetail />} />
               <Route path="projects/:projectSlug/milestones" element={<Milestones />} />

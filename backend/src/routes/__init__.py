@@ -1,11 +1,12 @@
 from fastapi import APIRouter
 
-from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows, agent_memory, project_registrations, agent_status, monitoring, comments, feedback, git_webhook
+from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows, agent_memory, project_registrations, agent_status, monitoring, comments, feedback, git_webhook, graph
 
 api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
 api_router.include_router(projects.router, prefix="/projects", tags=["项目管理"])
+api_router.include_router(graph.router, prefix="/projects/{slug}/graph", tags=["Graph View"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["仪表盘"])
 api_router.include_router(issues.router, prefix="/issues", tags=["问题管理"])
 api_router.include_router(milestones.router, prefix="/milestones", tags=["里程碑/分期"])

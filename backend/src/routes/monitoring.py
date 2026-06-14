@@ -25,12 +25,17 @@ async def get_system_config():
     """系统配置（公开，无需认证）"""
     import os
     ai_enabled = os.getenv("PM_COPILOT_ENABLED", "false").lower() == "true"
+    try:
+        from src.routes.copilot import get_copilot
+        copilot_ready = get_copilot() is not None
+    except Exception:
+        copilot_ready = False
     return {
-        "ai_enabled": ai_enabled,
+        "ai_enabled": ai_enabled and copilot_ready,
         "features": {
-            "copilot_chat": ai_enabled,
-            "ai_scan": ai_enabled,
-            "risk_alert_auto": ai_enabled,
+            "copilot_chat": ai_enabled and copilot_ready,
+            "ai_scan": ai_enabled and copilot_ready,
+            "risk_alert_auto": ai_enabled and copilot_ready,
         },
     }
 

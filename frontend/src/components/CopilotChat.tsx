@@ -51,16 +51,34 @@ export default function CopilotChat({ open, onClose }: CopilotChatProps) {
     if (!connected) {
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(), role: "copilot",
-        content: "Copilot 引擎未启用。请设置 PM_COPILOT_ENABLED=true 并启动 pm-copilot-engine。",
+        content: "Copilot 引擎未启用。请设置 PM_COPILOT_ENABLED=true 并配置 API Key。",
         timestamp: new Date(),
       }]);
       return;
     }
 
+    const thinkingId = (Date.now() + 1).toString();
     setMessages((prev) => [...prev, {
-      id: (Date.now() + 1).toString(), role: "copilot",
+      id: thinkingId, role: "copilot",
       content: "思考中...", timestamp: new Date(),
     }]);
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/v1/copilot/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: input.trim() }),
+      });
+      const data = await res.json();
+      setMessages((prev) => prev.map((m) =>
+        m.id === thinkingId ? { ...m, content: data.response || "抱歉，处理失败。" } : m
+      ));
+    } catch {
+      setMessages((prev) => prev.map((m) =>
+        m.id === thinkingId ? { ...m, content: "网络错误，请重试。" } : m
+      ));
+    }
   };
 
   if (!open) return null;

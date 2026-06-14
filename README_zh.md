@@ -27,25 +27,39 @@
 
 ## 快速启动
 
+### 环境要求
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/)（推荐）或 pip
+- Node.js 20+
+
 ### 1. 配置环境变量
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，**必须设置**以下变量：
+编辑 `.env` — 以下三项**必填**：
 
 ```env
+# 1. JWT 签名密钥（随机 32+ 字符）
 SECRET_KEY=your-random-secret-key-here-min-32-chars
-ADMIN_PASSWORD=your-secure-password
+
+# 2. 管理员密码哈希
+#    生成: python -c "import bcrypt; print(bcrypt.hashpw(b'your-password'.encode(), bcrypt.gensalt()).decode())"
+ADMIN_PASSWORD_HASH=$2b$12$...
+
+# 3. Fernet 加密密钥（加密服务器凭据）
+#    生成: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+ENCRYPTION_KEY=...
 ```
 
 ### 2. 启动后端
 
 ```bash
 cd backend
-uv sync
-uv run python main.py
+uv sync                    # 安装依赖
+uv run python main.py      # 启动服务
 # API: http://localhost:8000
 # Swagger 文档: http://localhost:8000/docs
 ```
@@ -57,7 +71,7 @@ cd frontend
 npm install
 npm run dev
 # 前端: http://localhost:5173
-# 自动代理 API 请求到 localhost:8000
+# API 请求自动代理到 localhost:8000
 ```
 
 ### Docker 一键启动

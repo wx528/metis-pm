@@ -27,25 +27,39 @@ This system is not for teams. It's for **you and an AI Coding Agent**:
 
 ## Quick Start
 
+### Requirements
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- Node.js 20+
+
 ### 1. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set the required variables:
+Edit `.env` — three things are **required**:
 
 ```env
+# 1. JWT secret (random 32+ chars)
 SECRET_KEY=your-random-secret-key-here-min-32-chars
-ADMIN_PASSWORD=your-secure-password
+
+# 2. Admin password hash
+#    Generate: python -c "import bcrypt; print(bcrypt.hashpw(b'your-password'.encode(), bcrypt.gensalt()).decode())"
+ADMIN_PASSWORD_HASH=$2b$12$...
+
+# 3. Fernet encryption key (for server credentials)
+#    Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+ENCRYPTION_KEY=...
 ```
 
 ### 2. Start Backend
 
 ```bash
 cd backend
-uv sync
-uv run python main.py
+uv sync                    # install dependencies
+uv run python main.py      # start server
 # API: http://localhost:8000
 # Swagger: http://localhost:8000/docs
 ```

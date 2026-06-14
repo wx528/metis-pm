@@ -105,7 +105,7 @@ persistence:
 # ─── 安全 ──────────────────────────────────────────────
 secretKey: "change-me-in-production"
 adminPassword: "change-me-in-production"
-agentPasswords: "trae:CHANGE-ME,first-mate:CHANGE-ME:mate,qa-tester:CHANGE-ME:tester"
+agentPasswords: "agent-name:CHANGE-ME:agent"
 
 # ─── Ingress ───────────────────────────────────────────
 ingress:

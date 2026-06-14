@@ -67,14 +67,8 @@ class Settings(BaseSettings):
         
         # 验证 agent 密码
         for name, (pwd_hash, role) in self.agent_password_map.items():
-            # 支持明文密码（旧格式兼容）和哈希密码
             if pwd_hash.startswith("$2b$") or pwd_hash.startswith("$2a$"):
-                # bcrypt 哈希
                 if bcrypt.checkpw(password.encode(), pwd_hash.encode()):
-                    return (name, role)
-            else:
-                # 明文密码（不推荐，但兼容旧格式）
-                if password == pwd_hash:
                     return (name, role)
         return None
 

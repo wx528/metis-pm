@@ -32,7 +32,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ### P0-2: ADMIN_PASSWORD 使用弱密码
 
 **位置**: `.env` 第 2 行
-**现状**: `ADMIN_PASSWORD=CHANGE-ME`
+**现状**: `ADMIN_PASSWORD=CHANGE-ME`（已使用弱密码）
 **风险**: 任何人可用 "admin" 登录管理后台
 **修复**: 设置强密码（≥12 位，含大小写+数字+特殊字符）
 

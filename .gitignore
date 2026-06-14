@@ -12,6 +12,12 @@ venv/
 .env
 !.env.example
 
+# Credentials
+*.pem
+*.key
+*.p12
+fix_env*.py
+
 # Database
 *.db
 *.sqlite

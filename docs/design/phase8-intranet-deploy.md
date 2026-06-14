@@ -295,7 +295,7 @@ echo "Backup completed: pm_$TIMESTAMP.db"
 │  AI Agent 开发机 (如 192.168.1.50)              │
 │                                                 │
 │  MCP Server ──► PM_API_URL=http://192.168.1.100:8000/api/v1
-│                PM_AGENT_PASSWORD=CHANGE-ME
+│                PM_AGENT_PASSWORD=<agent-password>
 │                                                 │
 └─────────────────────────────────────────────────┘
 ```

@@ -215,7 +215,7 @@
 
 #### 配置变更
 
-- `.env` / `.env.example`：新增 `qa-tester:CHANGE-ME:tester`、`MCP_TESTER_PORT=9002`、`TESTER_PASSWORD`
+- `.env` / `.env.example`：新增 tester 角色密码、`MCP_TESTER_PORT=9002`、`TESTER_PASSWORD`
 - `docker-compose.yml`：新增 `mcp-tester` 容器
 
 ## [0.16.0] - 2026-05-25
@@ -276,7 +276,7 @@
 | `mcp_server_mate.py` | 大副 MCP Server，端口 9001，管理类工具集 |
 | `mcp_server.py` | 重构使用 mcp_common，端口 9000 不变 |
 | Docker Compose | 新增 `mcp-mate` 容器 |
-| `.env` | 新增 `first-mate:CHANGE-ME:mate` 密码和 `MCP_MATE_PORT` |
+| `.env` | 新增 mate 角色密码和 `MCP_MATE_PORT` |
 
 #### RBAC 权限隔离（硬隔离）
 
@@ -328,11 +328,11 @@
   "mcpServers": {
     "project-manager": {
       "url": "http://localhost:9000/mcp",
-      "headers": { "X-PM-Password": "CHANGE-ME" }
+      "headers": { "X-PM-Password": "<agent-password>" }
     },
     "project-manager-mate": {
       "url": "http://localhost:9001/mcp",
-      "headers": { "X-PM-Password": "CHANGE-ME" }
+      "headers": { "X-PM-Password": "<mate-password>" }
     }
   }
 }
@@ -697,7 +697,7 @@
     "project-manager": {
       "url": "http://localhost:9000/mcp",
       "headers": {
-        "X-PM-Password": "CHANGE-ME"
+        "X-PM-Password": "<agent-password>"
       }
     }
   }
@@ -713,7 +713,7 @@
       "args": ["D:/AI-learning/project-manager-system/backend/mcp_server.py"],
       "env": {
         "PM_API_URL": "http://localhost:8000/api/v1",
-        "PM_AGENT_PASSWORD": "CHANGE-ME"
+        "PM_AGENT_PASSWORD": "<agent-password>"
       }
     }
   }
@@ -1144,8 +1144,8 @@
 ```bash
 # .env
 SECRET_KEY=your-secret-key-min-32-chars
-ADMIN_PASSWORD=CHANGE-ME                                              # 人类用户
-AGENT_PASSWORDS=cline:CHANGE-ME,codebuddy:CHANGE-ME     # AI Agent（name:password 逗号分隔）
+ADMIN_PASSWORD=your-secure-password                                  # 人类用户
+AGENT_PASSWORDS=agent-a:CHANGE-ME,agent-b:CHANGE-ME                 # AI Agent（name:password 逗号分隔）
 ```
 
 ```json
@@ -1202,9 +1202,9 @@ AGENT_PASSWORDS=cline:CHANGE-ME,codebuddy:CHANGE-ME     # AI Agent（name:passwo
 | 测试 | 结果 |
 |------|------|
 | `admin` 密码登录 → `sub: "admin"`, `role: "admin"` | ✅ |
-| `CHANGE-ME` 密码登录 → `sub: "cline"`, `role: "agent"` | ✅ |
-| `CHANGE-ME` 密码登录 → `sub: "codebuddy"`, `role: "agent"` | ✅ |
-| `CHANGE-ME` 密码登录 → `sub: "trae"`, `role: "agent"` | ✅ |
+| `<agent-password>` 密码登录 → `sub: "cline"`, `role: "agent"` | ✅ |
+| `<agent-password>` 密码登录 → `sub: "codebuddy"`, `role: "agent"` | ✅ |
+| `<agent-password>` 密码登录 → `sub: "trae"`, `role: "agent"` | ✅ |
 | 错误密码 → 401 拒绝 | ✅ |
 | cline 创建 issue → ActivityLog `actor: "cline"` | ✅ |
 | codebuddy 创建 issue → ActivityLog `actor: "codebuddy"` | ✅ |

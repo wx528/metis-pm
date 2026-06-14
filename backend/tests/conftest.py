@@ -1,9 +1,15 @@
 import os
+import bcrypt
 import pytest
 
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-min-32-chars!!")
-os.environ.setdefault("ADMIN_PASSWORD_HASH", "REDACTED-Bcrypt-HASH6MpcMDywNJeE8zLpdpP6Dw3lmbPaBhGwfgJQdWR0oe")
-os.environ.setdefault("AGENT_PASSWORDS_JSON", '{"testagent": {"password_hash": "REDACTED-Bcrypt-HASHaBoAA4A9XoexRMqI1PDYodJLzw0B49QA.TnkAWxdNi", "role": "agent"}}')
-os.environ.setdefault("ENCRYPTION_KEY", "REDACTED-FERNET-KEY=")
+_secret_key = "test-secret-key-for-pytest-min-32-chars!!"
+_admin_hash = bcrypt.hashpw(b"test-admin-password", bcrypt.gensalt()).decode()
+_agent_hash = bcrypt.hashpw(b"test-agent-password", bcrypt.gensalt()).decode()
+_encryption_key = "REDACTED-FERNET-KEY="
+
+os.environ.setdefault("SECRET_KEY", _secret_key)
+os.environ.setdefault("ADMIN_PASSWORD_HASH", _admin_hash)
+os.environ.setdefault("AGENT_PASSWORDS_JSON", f'{{"testagent": {{"password_hash": "{_agent_hash}", "role": "agent"}}}}')
+os.environ.setdefault("ENCRYPTION_KEY", _encryption_key)
 
 pytest_plugins = ["pytest_asyncio"]

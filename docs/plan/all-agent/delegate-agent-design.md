@@ -446,7 +446,7 @@ delegate:
     - .env
   environment:
     - PM_API_URL=http://backend:8000/api/v1
-    - PM_AGENT_PASSWORD=${DELEGATE_PASSWORD:-delegate-2026}
+    - PM_AGENT_PASSWORD=${DELEGATE_PASSWORD:-CHANGE-ME}
   depends_on:
     backend:
       condition: service_healthy

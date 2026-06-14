@@ -459,6 +459,24 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("PM Copilot disabled (set PM_COPILOT_ENABLED=true to enable)")
 
+    # A2A 初始化：从环境变量注册已知 Agent，启用 A2A 委派
+    a2a_enabled = os.getenv("A2A_ENABLED", "false").lower() == "true"
+    if a2a_enabled:
+        try:
+            from src.a2a.registry import init_registry_from_env
+            registry = init_registry_from_env()
+            agent_count = len(registry.list_active())
+            logger.info("A2A enabled, %d agent(s) registered", agent_count)
+
+            # 在 TriggerHub 中启用 A2A 委派
+            from src.core.trigger_hub import get_trigger_hub
+            hub = get_trigger_hub()
+            hub.enable_a2a(True)
+        except Exception as e:
+            logger.error(f"Failed to initialize A2A: {e}")
+    else:
+        logger.info("A2A disabled (set A2A_ENABLED=true to enable)")
+
     yield
     
     # 清理

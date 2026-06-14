@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from enum import Enum
 from dataclasses import dataclass, field
@@ -25,13 +26,17 @@ class TriggerContext:
 
 
 class TriggerHub:
-    """活跃触发中心：将高优先级触发事件转发给 Copilot 处理。"""
+    """活跃触发中心：将高优先级触发事件转发给 Copilot 和/或 A2A Agent 处理。"""
 
-    def __init__(self, copilot_ask_fn: Optional[Callable[[str], str]] = None):
+    def __init__(self, copilot_ask_fn: Optional[Callable[[str], str]] = None, a2a_enabled: bool = False):
         self._copilot_ask_fn = copilot_ask_fn
+        self._a2a_enabled = a2a_enabled
 
     def set_copilot_ask_fn(self, fn: Callable[[str], str]):
         self._copilot_ask_fn = fn
+
+    def enable_a2a(self, enabled: bool = True):
+        self._a2a_enabled = enabled
 
     def _dispatch_to_copilot(self, context: TriggerContext, prompt: str) -> bool:
         if not self._copilot_ask_fn:
@@ -45,6 +50,31 @@ class TriggerHub:
             return True
         except Exception as e:
             logger.error("Trigger dispatch failed: %s", e)
+            return False
+
+    def _dispatch_to_a2a(self, context: TriggerContext, description: str, capability: str) -> bool:
+        """通过 A2A 协议委派任务给外部 Agent"""
+        if not self._a2a_enabled:
+            return False
+        try:
+            from src.a2a.client import get_a2a_client
+            client = get_a2a_client()
+            # 异步调用需要事件循环
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    client.delegate_to_capability(capability, description, context.payload)
+                )
+            except RuntimeError:
+                # 没有运行中的事件循环，创建新任务
+                asyncio.create_task(
+                    client.delegate_to_capability(capability, description, context.payload)
+                )
+            logger.info("Trigger dispatched to A2A agent: %s:%s (capability=%s)",
+                        context.trigger_type.value, context.source, capability)
+            return True
+        except Exception as e:
+            logger.error("A2A dispatch failed: %s", e)
             return False
 
     def fire(self, context: TriggerContext) -> bool:
@@ -65,7 +95,16 @@ class TriggerHub:
         self.fire(ctx)
         if priority >= 5:
             prompt = f"[事件触发] {event_type} (ID: {entity_id})，请评估是否需要采取行动。"
-            return self._dispatch_to_copilot(ctx, prompt)
+            copilot_ok = self._dispatch_to_copilot(ctx, prompt)
+            # 映射事件类型到 A2A 能力标签
+            capability_map = {
+                "p0_issue_created": "issue-handling",
+                "task_overdue": "issue-handling",
+                "risk_critical": "risk-analysis",
+            }
+            a2a_capability = capability_map.get(event_type)
+            a2a_ok = self._dispatch_to_a2a(ctx, prompt, a2a_capability) if a2a_capability else False
+            return copilot_ok or a2a_ok
         return True
 
     def fire_request(self, source: str, query: str, user_id: Optional[str] = None) -> bool:

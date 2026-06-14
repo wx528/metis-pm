@@ -186,6 +186,7 @@ export default function Layout() {
     { key: `/git-integration`, icon: <SettingOutlined />, label: "Git 集成" },
     { key: `/notifications`, icon: <BellOutlined />, label: "通知中心" },
     { key: `/feedbacks`, icon: <MessageOutlined />, label: "意见箱" },
+    { key: `/risk-alerts`, icon: <WarningOutlined />, label: "风险告警" },
     { key: `/dead-letter`, icon: <WarningOutlined />, label: "死信队列" },
   ];
 
@@ -196,6 +197,7 @@ export default function Layout() {
       if (item.key === "/git-integration") return location.pathname === "/git-integration";
       if (item.key === "/notifications") return location.pathname === "/notifications";
       if (item.key === "/feedbacks") return location.pathname === "/feedbacks";
+      if (item.key === "/risk-alerts") return location.pathname === "/risk-alerts";
       if (item.key === "/dead-letter") return location.pathname === "/dead-letter";
       return location.pathname.startsWith(item.key);
     })?.key || basePath || "/";

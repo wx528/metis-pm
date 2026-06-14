@@ -20,6 +20,7 @@ import Servers from "./pages/Servers";
 import Projects from "./pages/Projects";
 import ProjectRegistrations from "./pages/ProjectRegistrations";
 import Feedbacks from "./pages/Feedbacks";
+import RiskAlerts from "./pages/RiskAlerts";
 import DeadLetterQueue from "./pages/DeadLetterQueue";
 import GitIntegration from "./pages/GitIntegration";
 import Notifications from "./pages/Notifications";
@@ -67,6 +68,7 @@ function ThemedApp() {
               <Route path="projects" element={<Projects />} />
               <Route path="project-registrations" element={<ProjectRegistrations />} />
               <Route path="feedbacks" element={<Feedbacks />} />
+              <Route path="risk-alerts" element={<RiskAlerts />} />
               <Route path="dead-letter" element={<DeadLetterQueue />} />
               <Route path="git-integration" element={<GitIntegration />} />
               <Route path="notifications" element={<Notifications />} />

@@ -462,7 +462,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Project Manager",
+    title="Metis PM",
     version=APP_VERSION,
     debug=settings.DEBUG,
     lifespan=lifespan,
@@ -494,4 +494,4 @@ app.include_router(api_router)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "app": "project_manager", "version": APP_VERSION}
+    return {"status": "ok", "app": "metis_pm", "version": APP_VERSION}

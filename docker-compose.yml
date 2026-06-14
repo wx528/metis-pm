@@ -1,5 +1,5 @@
 # ========================================
-# Project Manager System - Docker Compose
+# Metis PM - Docker Compose
 # ========================================
 #
 # 快速启动：
@@ -31,7 +31,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:////data/project_manager.db}
+      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:////data/metis_pm.db}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-8080},http://127.0.0.1:${FRONTEND_PORT:-8080},http://${HOST_IP:-localhost}:${FRONTEND_PORT:-8080}}
       - DEBUG=${DEBUG:-false}
     healthcheck:

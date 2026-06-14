@@ -1,4 +1,4 @@
-# Project Manager System
+# Metis PM
 
 人机协作项目管理系统 — 专为 **用户 + AI Coding Agent** 协同管理项目而设计。
 
@@ -58,7 +58,7 @@ docker compose up -d
 ```
 ┌─────────────┐     HTTP API      ┌─────────────┐     SQLite
 │  React 前端  │ ◄──────────────► │ FastAPI 后端 │ ◄────────►
-│  (你用的)    │                   │             │  project_manager.db
+│  (你用的)    │                   │             │  metis_pm.db
 └─────────────┘                   └──────┬──────┘
                                          │
                                     MCP Server (Streamable HTTP)

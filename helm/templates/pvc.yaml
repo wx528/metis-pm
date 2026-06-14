@@ -1,14 +1,13 @@
 {{- /*
-  PVC: SQLite 数据 + 备份（仅非 PostgreSQL 模式）
-*/ -}}
+  PVC: SQLite 数据 + 备份（仅�?PostgreSQL 模式�?*/ -}}
 {{- if not .Values.postgresql.enabled -}}
 {{- if .Values.persistence.sqlite.enabled -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "project-manager.fullname" . }}-sqlite
+  name: {{ include "metis-pm.fullname" . }}-sqlite
   labels:
-    {{- include "project-manager.labels" . | nindent 4 }}
+    {{- include "metis-pm.labels" . | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteOnce
@@ -24,9 +23,9 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "project-manager.fullname" . }}-backup
+  name: {{ include "metis-pm.fullname" . }}-backup
   labels:
-    {{- include "project-manager.labels" . | nindent 4 }}
+    {{- include "metis-pm.labels" . | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteOnce

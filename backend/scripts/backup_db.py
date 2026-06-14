@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Project Manager System - Database Backup Script
+Metis PM - Database Backup Script
 
 Usage:
     python scripts/backup_db.py                    # backup to ./backups/
     python scripts/backup_db.py --output /path/to/save  # custom output dir
-    python scripts/backup_db.py --db ./project_manager.db  # custom db path
+    python scripts/backup_db.py --db ./metis_pm.db  # custom db path
 
 Scheduled via cron / Task Scheduler:
     # Daily backup at 3 AM:
@@ -22,22 +22,22 @@ from pathlib import Path
 def get_default_db_path() -> Path:
     """Try to determine DB path from common locations."""
     candidates = [
-        Path("./project_manager.db"),
-        Path("./data/project_manager.db"),
-        Path("../data/project_manager.db"),
-        Path("/data/project_manager.db"),
+        Path("./metis_pm.db"),
+        Path("./data/metis_pm.db"),
+        Path("../data/metis_pm.db"),
+        Path("/data/metis_pm.db"),
     ]
     for p in candidates:
         if p.exists():
             return p.resolve()
-    return Path("./project_manager.db")
+    return Path("./metis_pm.db")
 
 
 def clean_old_backups(backup_dir: Path, keep_days: int = 30):
     """Remove backups older than keep_days."""
     now = datetime.now()
     cutoff = now - timedelta(days=keep_days)
-    for f in backup_dir.glob("project_manager_*.db.gz"):
+    for f in backup_dir.glob("metis_pm_*.db.gz"):
         if f.stat().st_mtime < cutoff.timestamp():
             f.unlink()
             print(f"  [cleanup] removed old backup: {f.name}")
@@ -52,7 +52,7 @@ def backup_database(db_path: Path, output_dir: Path, compress: bool = True):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_name = f"project_manager_{timestamp}.db"
+    backup_name = f"metis_pm_{timestamp}.db"
     backup_path = output_dir / backup_name
 
     print(f"Backing up: {db_path}")
@@ -79,7 +79,7 @@ def backup_database(db_path: Path, output_dir: Path, compress: bool = True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Backup Project Manager database")
+    parser = argparse.ArgumentParser(description="Backup Metis PM database")
     parser.add_argument(
         "--db",
         type=Path,

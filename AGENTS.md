@@ -1,6 +1,6 @@
 # AGENTS.md — 项目编码规范
 
-> 本文档面向 AI Agent 和开发者，定义 Project Manager System 的前后端编码规范。
+> 本文档面向 AI Agent 和开发者，定义 Metis PM 的前后端编码规范。
 > 最后更新：2026-05-28
 
 ---
@@ -184,7 +184,7 @@ api_router.include_router(projects.router, prefix="/projects", tags=["项目管�
 ```python
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("project-manager")
+mcp = FastMCP("metis-pm")
 
 @mcp.tool()
 async def create_issue(title: str, project_id: int, priority: str = "P2") -> str:

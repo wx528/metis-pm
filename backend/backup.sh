@@ -6,7 +6,7 @@
 set -e
 
 BACKUP_DIR="/data/backups"
-DB_FILE="/data/project_manager.db"
+DB_FILE="/data/metis_pm.db"
 KEEP_DAYS="${1:-7}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 

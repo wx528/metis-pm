@@ -1,25 +1,24 @@
 {{- /*
-  PostgreSQL StatefulSet（可选，仅 postgresql.enabled=true）
-*/ -}}
+  PostgreSQL StatefulSet（可选，�?postgresql.enabled=true�?*/ -}}
 {{- if .Values.postgresql.enabled -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "project-manager.fullname" . }}-postgres
+  name: {{ include "metis-pm.fullname" . }}-postgres
   labels:
-    {{- include "project-manager.labels" . | nindent 4 }}
+    {{- include "metis-pm.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgres
 spec:
-  serviceName: {{ include "project-manager.fullname" . }}-postgres
+  serviceName: {{ include "metis-pm.fullname" . }}-postgres
   replicas: 1
   selector:
     matchLabels:
-      {{- include "project-manager.selectorLabels" . | nindent 6 }}
+      {{- include "metis-pm.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: postgres
   template:
     metadata:
       labels:
-        {{- include "project-manager.selectorLabels" . | nindent 8 }}
+        {{- include "metis-pm.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgres
     spec:
       containers:
@@ -63,13 +62,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "project-manager.fullname" . }}-postgres
+  name: {{ include "metis-pm.fullname" . }}-postgres
   labels:
-    {{- include "project-manager.labels" . | nindent 4 }}
+    {{- include "metis-pm.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgres
 spec:
   selector:
-    {{- include "project-manager.selectorLabels" . | nindent 4 }}
+    {{- include "metis-pm.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: postgres
   ports:
     - port: 5432

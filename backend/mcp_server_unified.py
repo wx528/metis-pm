@@ -1,11 +1,11 @@
 """
-Project Manager MCP Server - Unified
+Metis PM MCP Server - Unified
 Combines all roles: agent, mate, tester, registrar
 
 === Streamable HTTP 模式配置 ===
 {
   "mcpServers": {
-    "project-manager": {
+    "metis-pm": {
       "url": "http://localhost:9000/mcp",
       "headers": {
         "X-PM-Password": "your-password"
@@ -44,7 +44,7 @@ def _get_mcp_metrics():
         _mcp_metrics = (mcp_tool_duration_seconds, mcp_tool_total)
     return _mcp_metrics
 
-mcp = FastMCP("project-manager")
+mcp = FastMCP("metis-pm")
 
 ROLES = {"agent", "mate", "tester", "registrar", "admin"}
 

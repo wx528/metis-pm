@@ -10,10 +10,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    APP_NAME: str = "project_manager"
+    APP_NAME: str = "metis_pm"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
-    DATABASE_URL: str = "sqlite+aiosqlite:///./project_manager.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./metis_pm.db"
     SECRET_KEY: str = ""
     ADMIN_PASSWORD_HASH: str = ""
     CORS_ORIGINS: str = "http://localhost:5173"

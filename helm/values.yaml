@@ -1,5 +1,5 @@
 # ========================================
-# Project Manager System - Helm Values
+# Metis PM - Helm Values
 # ========================================
 #
 # 最小化部署（SQLite + 单副本）：
@@ -18,7 +18,7 @@ image:
 backend:
   replicaCount: 1
   image:
-    repository: project-manager-backend
+    repository: metis-pm-backend
     tag: "1.3.0"
   service:
     port: 8000
@@ -46,7 +46,7 @@ backend:
 mcp:
   replicaCount: 1
   image:
-    repository: project-manager-backend
+    repository: metis-pm-backend
     tag: "1.3.0"
   service:
     port: 9000
@@ -62,7 +62,7 @@ mcp:
 frontend:
   replicaCount: 1
   image:
-    repository: project-manager-frontend
+    repository: metis-pm-frontend
     tag: "1.3.0"
   service:
     port: 80

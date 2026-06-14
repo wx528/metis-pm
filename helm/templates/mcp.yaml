@@ -4,20 +4,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "project-manager.fullname" . }}-mcp
+  name: {{ include "metis-pm.fullname" . }}-mcp
   labels:
-    {{- include "project-manager.labels" . | nindent 4 }}
+    {{- include "metis-pm.labels" . | nindent 4 }}
     app.kubernetes.io/component: mcp
 spec:
   replicas: {{ .Values.mcp.replicaCount }}
   selector:
     matchLabels:
-      {{- include "project-manager.selectorLabels" . | nindent 6 }}
+      {{- include "metis-pm.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: mcp
   template:
     metadata:
       labels:
-        {{- include "project-manager.selectorLabels" . | nindent 8 }}
+        {{- include "metis-pm.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: mcp
     spec:
       containers:
@@ -28,10 +28,10 @@ spec:
             - containerPort: 9000
           envFrom:
             - secretRef:
-                name: {{ include "project-manager.fullname" . }}-secret
+                name: {{ include "metis-pm.fullname" . }}-secret
           env:
             - name: PM_API_URL
-              value: "http://{{ include "project-manager.fullname" . }}-backend:8000/api/v1"
+              value: "http://{{ include "metis-pm.fullname" . }}-backend:8000/api/v1"
             - name: MCP_TRANSPORT
               value: "streamable-http"
             - name: MCP_PORT
@@ -56,13 +56,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "project-manager.fullname" . }}-mcp
+  name: {{ include "metis-pm.fullname" . }}-mcp
   labels:
-    {{- include "project-manager.labels" . | nindent 4 }}
+    {{- include "metis-pm.labels" . | nindent 4 }}
     app.kubernetes.io/component: mcp
 spec:
   selector:
-    {{- include "project-manager.selectorLabels" . | nindent 4 }}
+    {{- include "metis-pm.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: mcp
   ports:
     - port: 9000

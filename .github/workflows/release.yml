@@ -5,7 +5,7 @@
 # 产出：Chart 包发布到 GitHub Releases 或 OCI Registry
 #
 # 使用方式：
-#   helm install pm oci://ghcr.io/<owner>/charts/project-manager --version 1.3.0
+#   helm install pm oci://ghcr.io/<owner>/charts/metis-pm --version 1.3.0
 
 name: Release Chart
 
@@ -38,7 +38,7 @@ jobs:
       - name: Package Chart
         run: |
           helm package helm/ --destination ./
-          CHART_PKG=$(ls project-manager-*.tgz)
+          CHART_PKG=$(ls metis-pm-*.tgz)
           echo "chart_package=$CHART_PKG" >> $GITHUB_ENV
 
       - name: Push to OCI Registry

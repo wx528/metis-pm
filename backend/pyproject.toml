@@ -1,7 +1,7 @@
 [project]
-name = "project-manager-mcp"
+name = "metis-pm"
 version = "0.1.0"
-description = "Project Manager System - MCP Server for AI Coding Agents"
+description = "Metis PM - Human-AI Collaborative Project Management System"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-project-manager-mcp = "mcp_server:main"
+metis-pm-mcp = "mcp_server:main"
 
 [project.optional-dependencies]
 dev = [

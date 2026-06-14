@@ -94,7 +94,7 @@ async def backup_sqlite_db():
     os.makedirs(backup_dir, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(backup_dir, f"pm_{timestamp}.db")
+    backup_path = os.path.join(backup_dir, f"metis_pm_{timestamp}.db")
 
     try:
         # 使用 WAL checkpoint 确保数据一致性
@@ -107,7 +107,7 @@ async def backup_sqlite_db():
 
         # 清理旧备份，保留最近 7 份
         backups = sorted(
-            [f for f in os.listdir(backup_dir) if f.startswith("pm_") and f.endswith(".db")],
+            [f for f in os.listdir(backup_dir) if f.startswith("metis_pm_") and f.endswith(".db")],
             reverse=True,
         )
         for old_backup in backups[7:]:

@@ -34,6 +34,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useProject } from "../hooks/useProject";
 import { useNotifications } from "../hooks/useNotifications";
 import { useTheme } from "../hooks/useTheme";
+import CopilotChat from "./CopilotChat";
 import type { MenuProps } from "antd";
 
 const { Header, Sider, Content, Footer } = AntLayout;
@@ -56,6 +57,7 @@ export default function Layout() {
   const { unreadCount, notifications, refreshNotifications, markRead, markAllRead } = useNotifications();
   const { theme, toggleTheme } = useTheme();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   // 响应式：移动端侧边栏折叠
   const [collapsed, setCollapsed] = useState(false);
@@ -625,6 +627,19 @@ export default function Layout() {
           )}
         </Form>
       </Modal>
+
+      <Button
+        type="primary"
+        shape="circle"
+        icon={<ApartmentOutlined />}
+        onClick={() => setCopilotOpen(true)}
+        style={{
+          position: "fixed", bottom: 24, right: 24, width: 48, height: 48,
+          background: "#722ed1", boxShadow: "0 4px 12px rgba(114,46,209,0.4)", zIndex: 999,
+        }}
+        title="PM Copilot"
+      />
+      <CopilotChat open={copilotOpen} onClose={() => setCopilotOpen(false)} />
     </AntLayout>
   );
 }

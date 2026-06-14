@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from src.core.dependencies import get_db
 from src.core.activity import log_activity
 from src.core.notification import create_notification
+from src.core.trigger_hub import get_trigger_hub
 from src.core.metrics import agent_operations_total, issue_transitions_total, handovers_total
 from src.core.debounce import debounce_check_or_raise
 from src.models.issue import Issue, IssueType, IssueStatus, IssuePriority, IssueSource
@@ -111,6 +112,8 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
     )
 
     # 如果 Agent 创建了 P0/P1 issue，通知 admin
+    if issue.priority in (IssuePriority.P0, IssuePriority.P1):
+        get_trigger_hub().fire_event("p0_issue_created", str(issue.id), {"issue_id": issue.id, "priority": str(issue.priority), "project_id": issue.project_id})
     if user["role"] == "agent" and issue.priority in (IssuePriority.P0, IssuePriority.P1):
         await create_notification(
             db, recipient="admin",
@@ -238,6 +241,7 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
 
     # Agent 完成 issue 时通知 admin
     if user["role"] == "agent" and update_data.get("status") == IssueStatus.CLOSED:
+        get_trigger_hub().fire_event("issue_closed", str(issue.id), {"issue_id": issue.id, "project_id": issue.project_id})
         await create_notification(
             db, recipient="admin",
             type=NotificationType.TASK_COMPLETED,

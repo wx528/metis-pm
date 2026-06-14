@@ -5,7 +5,7 @@ import pytest
 _secret_key = "test-secret-key-for-pytest-min-32-chars!!"
 _admin_hash = bcrypt.hashpw(b"test-admin-password", bcrypt.gensalt()).decode()
 _agent_hash = bcrypt.hashpw(b"test-agent-password", bcrypt.gensalt()).decode()
-_encryption_key = "REDACTED-FERNET-KEY="
+_encryption_key = "4r99Al681mvjD86mt0v4cx59JSX_UiFseJ691qnaksQ="
 
 os.environ.setdefault("SECRET_KEY", _secret_key)
 os.environ.setdefault("ADMIN_PASSWORD_HASH", _admin_hash)

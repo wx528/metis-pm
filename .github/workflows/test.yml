@@ -55,9 +55,9 @@ jobs:
 
       - name: Run tests
         env:
-          SECRET_KEY: ci-test-secret-key-min-32-chars!!
-          ADMIN_PASSWORD_HASH: $2b$12$ciTestHashPlaceholderForCIOnly000000000000000000000000
-          AGENT_PASSWORDS_JSON: "{}"
+          SECRET_KEY: ci-test-secret-key-min-32-chars-long-enough
+          ADMIN_PASSWORD_HASH: "$2b$12$f5BJdfOBG9.FnlDcL1WfV.Trms.hb/HMrqE2YIIhGkfs4kgQrFMPK"
+          AGENT_PASSWORDS_JSON: '{"testagent": {"password_hash": "$2b$12$lPa/Jfp5VxvTgrh0gpuCU.qNLzrrGtzhQiFJwQ89DBH4NX7HfHaT6", "role": "agent"}}'
           DATABASE_URL: sqlite+aiosqlite:///./test.db
           DEBUG: "true"
         run: |

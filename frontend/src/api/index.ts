@@ -11,3 +11,5 @@ export * from "./projectRegistrations";
 export * from "./agentStatus";
 export * from "./graph";
 export * from "./riskAlerts";
+export * from "./monitoring";
+export * from "./feedback";

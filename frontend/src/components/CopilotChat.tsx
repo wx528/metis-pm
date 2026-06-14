@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Input, Button, List, Typography, Tag, Avatar, Space, Empty } from "antd";
 import { SendOutlined, RobotOutlined, UserOutlined, CloseOutlined } from "@ant-design/icons";
+import { api } from "../api/client";
 
 const { Text } = Typography;
 
@@ -21,7 +22,7 @@ export default function CopilotChat({ open, onClose }: CopilotChatProps) {
     {
       id: "welcome",
       role: "copilot",
-      content: "你好！我是 PM Copilot。目前处于待连接状态，pm-copilot-engine 就绪后即可开始智能对话。",
+      content: "你好！我是 PM Copilot。正在检测引擎状态...",
       timestamp: new Date(),
     },
   ]);
@@ -36,10 +37,22 @@ export default function CopilotChat({ open, onClose }: CopilotChatProps) {
   }, [messages]);
 
   useEffect(() => {
-    fetch("/api/v1/monitoring/config")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data?.ai_enabled) setConnected(true); })
-      .catch(() => {});
+    // 通过尝试访问 copilot 端点来检测是否启用
+    api.get("/copilot/status")
+      .then((res) => {
+        if (res.data?.enabled) {
+          setConnected(true);
+          setMessages((prev) => prev.map((m) =>
+            m.id === "welcome" ? { ...m, content: "你好！我是 PM Copilot，已就绪。有什么可以帮你的？" } : m
+          ));
+        }
+      })
+      .catch(() => {
+        setConnected(false);
+        setMessages((prev) => prev.map((m) =>
+          m.id === "welcome" ? { ...m, content: "Copilot 引擎未启用。请设置 PM_COPILOT_ENABLED=true 并配置 API Key。" } : m
+        ));
+      });
   }, []);
 
   const handleSend = async () => {
@@ -64,13 +77,8 @@ export default function CopilotChat({ open, onClose }: CopilotChatProps) {
     }]);
 
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch("/api/v1/copilot/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: input.trim() }),
-      });
-      const data = await res.json();
+      const res = await api.post("/copilot/chat", { message: input.trim() });
+      const data = res.data;
       setMessages((prev) => prev.map((m) =>
         m.id === thinkingId ? { ...m, content: data.response || "抱歉，处理失败。" } : m
       ));

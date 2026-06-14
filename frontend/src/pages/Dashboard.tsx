@@ -119,8 +119,8 @@ export default function Dashboard() {
   return (
     <div>
       <AgentActivityPanel
-        onIssueClick={(issueId) => navigate(`/issues/${issueId}`)}
-        onHandoverClick={(issueId) => navigate(`/issues/${issueId}`)}
+        onIssueClick={(issueId) => navigate(currentProject ? `/projects/${currentProject.slug}/issues/${issueId}` : `/issues/${issueId}`)}
+        onHandoverClick={(issueId) => navigate(currentProject ? `/projects/${currentProject.slug}/issues/${issueId}` : `/issues/${issueId}`)}
       />
 
       <h2>仪表盘{currentProject ? ` — ${currentProject.name}` : ""}</h2>

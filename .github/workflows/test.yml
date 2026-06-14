@@ -1,8 +1,6 @@
-# ========================================
-# CI: 测试流水线
-# ========================================
-# 触发：push/PR 到 main 分支
-# 步骤：lint → pytest
+# CI: Backend tests + Frontend build
+# Triggers: push/PR to main
+# Jobs: backend-test (lint + pytest) → frontend-test (tsc + eslint + build)
 
 name: Test
 
@@ -57,9 +55,9 @@ jobs:
 
       - name: Run tests
         env:
-          SECRET_KEY: test-secret-key
-          ADMIN_PASSWORD: test-admin
-          AGENT_PASSWORDS: test-agent:test-agent-2026
+          SECRET_KEY: ci-test-secret-key-min-32-chars!!
+          ADMIN_PASSWORD_HASH: $2b$12$ciTestHashPlaceholderForCIOnly000000000000000000000000
+          AGENT_PASSWORDS_JSON: "{}"
           DATABASE_URL: sqlite+aiosqlite:///./test.db
           DEBUG: "true"
         run: |

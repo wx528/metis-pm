@@ -2,6 +2,19 @@
 
 > [English](README.md)
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white" alt="FastAPI">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=flat" alt="License"></a>
+  <a href="https://github.com/wx528/metis-pm/actions/workflows/test.yml"><img src="https://github.com/wx528/metis-pm/actions/workflows/test.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/wx528/metis-pm/actions/workflows/build.yml"><img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker"></a>
+  <br>
+  <img src="https://img.shields.io/badge/AI-pm--copilot--engine-722ED1?style=flat&logo=openai&logoColor=white" alt="AI Engine">
+  <img src="https://img.shields.io/badge/MCP-Streamable%20HTTP-0078D4?style=flat" alt="MCP">
+</p>
+
 人机协作项目管理系统 — 专为 **用户 + AI Coding Agent** 协同管理项目而设计。
 
 ## 核心理念

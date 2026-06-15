@@ -4,6 +4,14 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv()
+
+# Suppress logging errors from pm-copilot-engine's file handlers on Windows
+# (Bad file descriptor errors in hermes_logging.py)
+logging.raiseExceptions = False
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text, select

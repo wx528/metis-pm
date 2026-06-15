@@ -280,10 +280,18 @@ async def process_webhook(
     event_type: str,
     payload: dict,
     signature: Optional[str],
-    secret: str
+    secret: str,
+    raw_payload: Optional[bytes] = None,
 ) -> dict:
-    """处理 webhook 事件的主入口"""
-    
+    """处理 webhook 事件的主入口
+
+    Args:
+        raw_payload: 原始 HTTP body 字节，用于签名验证。
+                     如果不提供，将退化为 ``json.dumps(payload, sort_keys=True).encode()``。
+                     GitHub/Gitea 的签名是基于 HTTP body 原始字节计算的，
+                     不能使用 str(dict) 这种会产生不同输出的编码方式。
+    """
+
     # 根据平台获取集成配置
     # 从 payload 中提取仓库信息
     repo_url = ""
@@ -291,7 +299,7 @@ async def process_webhook(
         repo_url = payload.get("repository", {}).get("html_url", "")
     elif platform in ["gitea", "forgejo"]:
         repo_url = payload.get("repository", {}).get("html_url", "")
-    
+
     # 查找匹配的集成配置
     stmt = select(GitIntegration).where(
         GitIntegration.repo_url == repo_url,
@@ -300,7 +308,7 @@ async def process_webhook(
     )
     result = await db.execute(stmt)
     integration = result.scalar_one_or_none()
-    
+
     if not integration:
         # 尝试通过 project_id 查找（如果 payload 中有）
         project_id = payload.get("project_id")
@@ -312,31 +320,30 @@ async def process_webhook(
             )
             result = await db.execute(stmt)
             integration = result.scalar_one_or_none()
-    
+
     if not integration:
         raise HTTPException(404, f"No active integration found for repo: {repo_url}")
-    
-    # 验证签名
+
+    # 验证签名：必须用原始 HTTP body 字节，不能用 str(dict) 重新编码
     stored_secret = decrypt_value(integration.webhook_secret)
-    if not verify_signature(
-        str(payload).encode(),
-        signature,
-        stored_secret
-    ):
+    if raw_payload is None:
+        import json as _json
+        raw_payload = _json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    if not verify_signature(raw_payload, signature, stored_secret):
         raise HTTPException(401, "Invalid signature")
-    
+
     # 检查事件是否在订阅列表中
     if event_type not in (integration.subscribed_events or []):
         return {"status": "ignored", "reason": "event not subscribed"}
-    
+
     # 处理事件
     if event_type == "push":
         results = await handle_push_event(db, payload, integration)
         return {"status": "ok", "event": "push", "results": results}
-    
+
     elif event_type == "pull_request":
         results = await handle_pull_request_event(db, payload, integration)
         return {"status": "ok", "event": "pull_request", "results": results}
-    
+
     else:
         return {"status": "ok", "event": event_type, "results": {}}

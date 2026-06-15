@@ -19,6 +19,24 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173"
     AGENT_PASSWORDS_JSON: str = ""
     ENCRYPTION_KEY: str = ""
+    # 外部 API Token 配置：JSON 格式 {"token_string": {"name": "agent_name", "role": "external"}}
+    # 外部 Agent 通过 Bearer Token 认证，仅可访问 /external/* 端点
+    API_TOKENS_JSON: str = ""
+
+    @property
+    def api_token_map(self) -> dict[str, dict]:
+        """解析 API_TOKENS_JSON 配置
+
+        格式: '{"tk-abc123": {"name": "ci-bot", "role": "external"}, ...}'
+        """
+        if not self.API_TOKENS_JSON:
+            return {}
+        try:
+            return json.loads(self.API_TOKENS_JSON)
+        except json.JSONDecodeError:
+            return {}
+
+    @property
 
     @property
     def agent_password_map(self) -> dict[str, tuple[str, str]]:

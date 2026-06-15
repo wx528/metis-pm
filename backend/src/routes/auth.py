@@ -59,6 +59,22 @@ async def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+async def verify_api_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """验证外部 API Token（独立于用户 JWT 认证）。
+
+    Token 在 settings.API_TOKENS_JSON 中配置，格式：
+    {"tk-abc123": {"name": "ci-bot", "role": "external"}, ...}
+
+    返回: {"sub": "ci-bot", "role": "external"}
+    """
+    from src.settings import settings
+    token = credentials.credentials
+    token_info = settings.api_token_map.get(token)
+    if not token_info:
+        raise HTTPException(status_code=401, detail="Invalid API token")
+    return {"sub": token_info.get("name", "unknown"), "role": token_info.get("role", "external")}
+
+
 def require_role(*allowed_roles: str):
     """角色权限校验工厂：仅允许指定角色访问"""
     def _checker(user: dict = Depends(get_current_user)) -> dict:

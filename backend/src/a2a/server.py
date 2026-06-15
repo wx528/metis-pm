@@ -196,7 +196,7 @@ async def _process_task(description: str, metadata: dict) -> str:
     根据任务描述路由到对应的处理逻辑。
     当前实现为简化版，后续可接入 Copilot 进行智能处理。
     """
-    from src.core.database import get_session
+    from src.core.database import AsyncSessionLocal
     from sqlalchemy import select, func
     from src.models.issue import Issue
     from src.models.project import Project
@@ -204,7 +204,7 @@ async def _process_task(description: str, metadata: dict) -> str:
 
     desc_lower = description.lower()
 
-    async with get_session() as session:
+    async with AsyncSessionLocal() as session:
         # 查询类任务
         if any(kw in desc_lower for kw in ["list", "show", "query", "status", "overview", "dashboard"]):
             if "issue" in desc_lower:

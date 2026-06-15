@@ -44,7 +44,15 @@ class TriggerHub:
                          context.trigger_type.value, context.source)
             return False
         try:
-            self._copilot_ask_fn(prompt)
+            if asyncio.iscoroutinefunction(self._copilot_ask_fn):
+                # 异步函数：在后台线程中运行，避免阻塞当前调用
+                import threading
+                def _run():
+                    asyncio.run(self._copilot_ask_fn(prompt))
+                t = threading.Thread(target=_run, daemon=True)
+                t.start()
+            else:
+                self._copilot_ask_fn(prompt)
             logger.info("Trigger dispatched to Copilot: %s:%s",
                         context.trigger_type.value, context.source)
             return True

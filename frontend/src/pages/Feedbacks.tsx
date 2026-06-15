@@ -400,6 +400,14 @@ export default function Feedbacks() {
               </Space>
             </div>
             <h3>{currentFeedback.title}</h3>
+            {currentFeedback.product_name && (
+              <div style={{ marginBottom: 8 }}>
+                <Tag color="geekblue">📦 {currentFeedback.product_name}</Tag>
+                {currentFeedback.product_version && (
+                  <Tag color="geekblue">🏷️ {currentFeedback.product_version}</Tag>
+                )}
+              </div>
+            )}
             <Paragraph>{currentFeedback.content}</Paragraph>
             <div style={{ color: "#999", fontSize: 12, marginBottom: 16 }}>
               提交者: {currentFeedback.submitted_by}

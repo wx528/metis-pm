@@ -39,6 +39,9 @@ class Feedback(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     entity_type = Column(String(50), nullable=True)  # 关联实体类型: issue, plan, workflow, etc.
     entity_id = Column(Integer, nullable=True)        # 关联实体 ID
+    # 产品信息（外部 Agent 提交时必填）
+    product_name = Column(String(200), nullable=True)       # 产品名称
+    product_version = Column(String(100), nullable=True)    # 产品版本
     # 管理员回复
     admin_reply = Column(Text, nullable=True)
     replied_by = Column(String(100), nullable=True)

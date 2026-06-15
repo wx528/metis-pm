@@ -8,6 +8,10 @@ import os
 import logging
 from typing import Optional
 
+# 必须最先设置：抑制 pm-copilot-engine 内部 logger 在 Windows 下
+# 因为 bad file descriptor 等原因抛出的 logging 异常（这些异常会中断调用方）。
+logging.raiseExceptions = False
+
 logger = logging.getLogger("copilot.scheduler")
 
 
@@ -35,12 +39,12 @@ class PMCopilot:
         self.api_key = api_key or os.getenv("PM_API_KEY", "")
         self.history = []
 
+        # 再次确保：pm-copilot-engine 内部的日志 handler 可能会修改全局设置
+        logging.raiseExceptions = False
+
         # 在导入 AIAgent 前先抑制 logging 错误和跳过耗时的网络探测。
         # pm-copilot-engine 初始化时会探测 Ollama /api/show 和 models.dev，
         # 这两个调用在没有这些服务的环境下会卡住几十秒甚至超时。
-        import logging as _logging
-        _logging.raiseExceptions = False
-
         try:
             import pm_copilot_engine.agent.model_metadata as _mm
             # 用一个快速返回默认值的 stub 替换 get_model_context_length，
@@ -127,6 +131,42 @@ class PMCopilot:
             return response
         except Exception as e:
             logger.error("Copilot ask failed: %s", e)
+            return "抱歉，AI 助手暂时不可用"
+
+    async def ascan(self) -> str:
+        """异步巡检 — 不会阻塞事件循环。"""
+        try:
+            result = await self.agent.arun_conversation(
+                user_message="""执行项目健康巡检：
+1. get_project_metrics() 获取整体指标
+2. list_projects(status="active") 列出活跃项目
+3. list_issues(priority="P0", status="open") 检查 P0 未关闭 issue
+4. list_risk_alerts(status="open") 检查未解决告警
+5. 如有风险，create_risk_alert() 创建告警
+返回中文巡检报告。""",
+                conversation_history=None,
+            )
+            return result.get("final_response", "巡检完成")
+        except Exception as e:
+            logger.error("Copilot ascan failed: %s", e)
+            return "巡检失败，AI 助手暂时不可用"
+
+    async def aask(self, question: str) -> str:
+        """异步问答 — 不会阻塞事件循环。"""
+        try:
+            result = await self.agent.arun_conversation(
+                user_message=question,
+                conversation_history=self.history[-20:] if self.history else None,
+            )
+            response = result.get("final_response", "")
+            messages = result.get("messages", [])
+            if messages:
+                self.history.extend(messages)
+                if len(self.history) > 40:
+                    self.history = self.history[-40:]
+            return response
+        except Exception as e:
+            logger.error("Copilot aask failed: %s", e)
             return "抱歉，AI 助手暂时不可用"
 
     def close(self):

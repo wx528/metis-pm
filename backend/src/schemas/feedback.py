@@ -11,6 +11,8 @@ class FeedbackCreate(BaseModel):
     project_id: Optional[int] = None
     entity_type: Optional[str] = None
     entity_id: Optional[int] = None
+    product_name: Optional[str] = None
+    product_version: Optional[str] = None
 
     @field_validator("category")
     @classmethod
@@ -72,6 +74,8 @@ class FeedbackRead(BaseModel):
     project_id: Optional[int] = None
     entity_type: Optional[str] = None
     entity_id: Optional[int] = None
+    product_name: Optional[str] = None
+    product_version: Optional[str] = None
     admin_reply: Optional[str] = None
     replied_by: Optional[str] = None
     replied_at: Optional[datetime] = None

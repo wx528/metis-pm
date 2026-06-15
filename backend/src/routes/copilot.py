@@ -46,9 +46,7 @@ async def copilot_chat(data: ChatRequest, user: dict = Depends(get_current_user)
     if not copilot:
         raise HTTPException(503, "Copilot is not enabled")
 
-    import asyncio
-    loop = asyncio.get_running_loop()
-    response = await loop.run_in_executor(None, copilot.ask, data.message)
+    response = await copilot.aask(data.message)
     return ChatResponse(response=response, copilot_enabled=True)
 
 
@@ -58,9 +56,7 @@ async def copilot_scan(user: dict = Depends(get_admin_user)):
     if not copilot:
         raise HTTPException(503, "Copilot is not enabled")
 
-    import asyncio
-    loop = asyncio.get_running_loop()
-    report = await loop.run_in_executor(None, copilot.scan)
+    report = await copilot.ascan()
     return ScanResponse(report=report)
 
 

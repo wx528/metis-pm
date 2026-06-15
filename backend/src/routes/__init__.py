@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 import os
 
-from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows, agent_memory, project_registrations, agent_status, monitoring, comments, feedback, git_webhook, graph, risk_alerts, copilot
+from src.routes import issues, milestones, plans, servers, activity_logs, auth, dashboard, projects, notifications, stats, workflows, agent_memory, project_registrations, agent_status, monitoring, comments, feedback, git_webhook, graph, risk_alerts, copilot, external_api
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -31,13 +31,14 @@ api_router.include_router(copilot.status_router, prefix="/copilot", tags=["Copil
 if os.getenv("PM_COPILOT_ENABLED", "false").lower() == "true":
     api_router.include_router(copilot.router, prefix="/copilot", tags=["Copilot"])
 
-# A2A 路由：始终注册，外部 Agent 可通过 A2A 协议与 PM 系统交互
-from src.a2a.server import router as a2a_router, well_known_router as a2a_well_known
-api_router.include_router(a2a_router, tags=["A2A"])
-api_router.include_router(a2a_well_known, tags=["A2A"])
+# A2A 路由：始终注册在根路径（不在 /api/v1 下），符合 A2A 协议规范
+# 由 main.py 直接 include 到 app，本文件不重复 include。
 
 # A2A 管理 API
 from src.a2a.api import router as a2a_api_router
 api_router.include_router(a2a_api_router, prefix="/a2a", tags=["A2A管理"])
 
 api_router.include_router(git_webhook.router, prefix="", tags=["Git Webhook"])
+
+# 外部 API：Bearer Token 认证，供外部 Agent 提交产品意见/Issue
+api_router.include_router(external_api.router, prefix="/external", tags=["外部API"])

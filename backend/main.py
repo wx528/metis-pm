@@ -226,6 +226,20 @@ async def _run_migrations(conn):
             except Exception as e:
                 logger.warning(f"Failed to add {col} to workflow_steps: {e}")
 
+    # Phase 11: feedbacks 表添加产品信息字段（外部 API 支持）
+    result = await conn.execute(text("PRAGMA table_info(feedbacks)"))
+    feedback_cols = {row[1] for row in result.fetchall()}
+    for col, col_type in [
+        ("product_name", "VARCHAR(200)"),
+        ("product_version", "VARCHAR(100)"),
+    ]:
+        if col not in feedback_cols:
+            try:
+                await conn.execute(text(f"ALTER TABLE feedbacks ADD COLUMN {col} {col_type}"))
+                logger.info(f"Added {col} column to feedbacks")
+            except Exception as e:
+                logger.warning(f"Failed to add {col} to feedbacks: {e}")
+
 
 async def _check_stuck_workflows():
     """后台任务：定期检测卡住的工作流并发送通知"""
@@ -456,9 +470,9 @@ async def lifespan(app: FastAPI):
             copilot_instance = PMCopilot()
             set_copilot(copilot_instance)
 
-            # 激活 TriggerHub：将 Copilot 的 ask 方法注入
+            # 激活 TriggerHub：将 Copilot 的异步 ask 方法注入
             from src.core.trigger_hub import TriggerHub, set_trigger_hub
-            hub = TriggerHub(copilot_ask_fn=copilot_instance.ask)
+            hub = TriggerHub(copilot_ask_fn=copilot_instance.aask)
             set_trigger_hub(hub)
 
             logger.info("PM Copilot enabled and initialized")
@@ -539,6 +553,12 @@ from src.core.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware, per_second=20, per_minute=200, burst=30)
 
 app.include_router(api_router)
+
+
+# A2A 规范要求端点在根路径（不在 /api/v1 之下），方便其他 Agent 发现
+from src.a2a.server import router as a2a_router, well_known_router as a2a_well_known
+app.include_router(a2a_router)
+app.include_router(a2a_well_known)
 
 
 @app.get("/health")

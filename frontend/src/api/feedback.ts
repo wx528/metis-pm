@@ -12,6 +12,8 @@ export interface Feedback {
   project_id: number | null;
   entity_type: string | null;
   entity_id: number | null;
+  product_name: string | null;
+  product_version: string | null;
   admin_reply: string | null;
   replied_by: string | null;
   replied_at: string | null;
@@ -32,6 +34,8 @@ export interface CreateFeedbackRequest {
   project_id?: number;
   entity_type?: string;
   entity_id?: number;
+  product_name?: string;
+  product_version?: string;
 }
 
 export interface UpdateFeedbackRequest {

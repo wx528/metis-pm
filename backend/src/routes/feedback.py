@@ -48,6 +48,8 @@ async def submit_feedback(
         project_id=data.project_id,
         entity_type=data.entity_type,
         entity_id=data.entity_id,
+        product_name=data.product_name,
+        product_version=data.product_version,
     )
     db.add(feedback)
     await db.commit()

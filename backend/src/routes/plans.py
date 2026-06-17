@@ -6,11 +6,8 @@ from sqlalchemy import select, desc, func, case
 from sqlalchemy.orm import selectinload
 
 from src.core.dependencies import get_db
-from src.core.activity import log_activity
-from src.core.notification import create_notification
 from src.models.plan import Plan, PlanStatus
 from src.models.plan_item import PlanItem, PlanItemStatus
-from src.models.notification import NotificationType
 from src.schemas.plan import (
     PlanCreate, PlanUpdate, PlanRead, PlanReadWithItems, PlanReadWithStats,
     PlanItemCreate, PlanItemUpdate, PlanItemRead,
@@ -70,46 +67,6 @@ async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user
     db.add(plan)
     await db.commit()
     await db.refresh(plan)
-
-    await log_activity(
-        db, entity_type="plan", entity_id=plan.id,
-        actor=user["sub"],
-        action="created",
-        new_value={"title": plan.title, "status": plan.status, "proposed_by": plan.proposed_by},
-        project_id=plan.project_id,
-    )
-
-    # Plan pending_approval → 通知 admin 和所有 mate 审批
-    if plan.status == PlanStatus.PENDING:
-        from src.settings import settings
-        notification_recipients = ["admin"]
-        for name, (pwd, role) in settings.agent_password_map.items():
-            if role == "mate":
-                notification_recipients.append(name)
-        for recip in notification_recipients:
-            await create_notification(
-                db, recipient=recip,
-                type=NotificationType.APPROVAL_NEEDED,
-                title=f"Plan #{plan.id} 等待审批",
-                body=plan.title,
-                entity_type="plan", entity_id=plan.id,
-                created_by=user["sub"],
-                project_id=plan.project_id,
-            )
-
-        # 给提议者发确认通知
-        proposer = plan.proposed_by
-        if proposer and proposer != "admin" and proposer != "user":
-            await create_notification(
-                db, recipient=proposer,
-                type=NotificationType.INFO,
-                title=f"Plan #{plan.id} 已提交，等待审批",
-                body=plan.title,
-                entity_type="plan", entity_id=plan.id,
-                created_by="system",
-                project_id=plan.project_id,
-            )
-
     return plan
 
 
@@ -132,11 +89,8 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    old_values = {k: getattr(plan, k) for k in ["title", "description", "status"]}
-
     update_data = data.model_dump(exclude_unset=True)
 
-    # 如果从 rejected 重新提交为 pending，清除 reject_reason
     if update_data.get("status") == PlanStatus.PENDING and plan.status == PlanStatus.REJECTED:
         plan.reject_reason = None
         plan.approved_by = None
@@ -147,33 +101,6 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
 
     await db.commit()
     await db.refresh(plan)
-
-    await log_activity(
-        db, entity_type="plan", entity_id=plan.id,
-        action="updated", actor=user["sub"],
-        old_value=old_values,
-        new_value={k: getattr(plan, k) for k in old_values.keys()},
-        project_id=plan.project_id,
-    )
-
-    # 重新提交审批时通知 admin 和所有 mate
-    if update_data.get("status") == PlanStatus.PENDING and old_values.get("status") == PlanStatus.REJECTED:
-        from src.settings import settings
-        notification_recipients = ["admin"]
-        for name, (pwd, role) in settings.agent_password_map.items():
-            if role == "mate":
-                notification_recipients.append(name)
-        for recip in notification_recipients:
-            await create_notification(
-                db, recipient=recip,
-                type=NotificationType.APPROVAL_NEEDED,
-                title=f"Plan #{plan.id} 重新提交审批",
-                body=plan.title,
-                entity_type="plan", entity_id=plan.id,
-                created_by=user["sub"],
-                project_id=plan.project_id,
-            )
-
     return plan
 
 
@@ -183,13 +110,6 @@ async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: di
     plan = result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-
-    await log_activity(
-        db, entity_type="plan", entity_id=plan.id,
-        action="deleted", actor=user["sub"],
-        old_value={"title": plan.title},
-        project_id=plan.project_id,
-    )
 
     await db.delete(plan)
     await db.commit()
@@ -207,46 +127,12 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
     if plan.status != PlanStatus.PENDING:
         raise HTTPException(status_code=400, detail="Only pending plans can be approved")
 
-    old_status = plan.status
     plan.status = PlanStatus.APPROVED
     plan.approved_by = user["sub"]
     plan.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(plan)
-
-    await log_activity(
-        db, entity_type="plan", entity_id=plan.id,
-        action="approved", actor=user["sub"],
-        old_value={"status": old_status},
-        new_value={"status": plan.status, "approved_by": plan.approved_by},
-        project_id=plan.project_id,
-    )
-
-    # 通知 plan 提议者审批通过
-    recipient = plan.proposed_by
-    if recipient and recipient != "user":
-        await create_notification(
-            db, recipient=recipient,
-            type=NotificationType.INFO,
-            title=f"Plan #{plan.id} 已审批通过",
-            body=plan.title,
-            entity_type="plan", entity_id=plan.id,
-            created_by=user["sub"],
-            project_id=plan.project_id,
-        )
-
-    # 检查并触发 on_plan_approved 工作流
-    try:
-        from src.core.workflow_engine import check_and_trigger_workflows
-        await check_and_trigger_workflows(
-            db, trigger_type="on_plan_approved",
-            project_id=plan.project_id,
-            context={"plan_id": plan.id, "plan_title": plan.title},
-        )
-    except Exception:
-        pass
-
     return plan
 
 
@@ -259,34 +145,11 @@ async def reject_plan(plan_id: int, reason: Optional[str] = Body(None, embed=Tru
     if plan.status != PlanStatus.PENDING:
         raise HTTPException(status_code=400, detail="Only pending plans can be rejected")
 
-    old_status = plan.status
     plan.status = PlanStatus.REJECTED
     plan.reject_reason = reason
 
     await db.commit()
     await db.refresh(plan)
-
-    await log_activity(
-        db, entity_type="plan", entity_id=plan.id,
-        action="rejected", actor=user["sub"],
-        old_value={"status": old_status},
-        new_value={"status": plan.status, "reject_reason": reason},
-        project_id=plan.project_id,
-    )
-
-    # 通知 plan 提议者被拒绝
-    recipient = plan.proposed_by
-    if recipient and recipient != "user":
-        await create_notification(
-            db, recipient=recipient,
-            type=NotificationType.INFO,
-            title=f"Plan #{plan.id} 被拒绝",
-            body=f"{plan.title} - 原因: {reason or '无'}",
-            entity_type="plan", entity_id=plan.id,
-            created_by=user["sub"],
-            project_id=plan.project_id,
-        )
-
     return plan
 
 
@@ -314,13 +177,6 @@ async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession 
     db.add(item)
     await db.commit()
     await db.refresh(item)
-
-    await log_activity(
-        db, entity_type="plan_item", entity_id=item.id,
-        action="created", actor=user["sub"],
-        new_value={"title": item.title, "plan_id": plan_id},
-        project_id=plan.project_id,
-    )
     return item
 
 
@@ -335,29 +191,12 @@ async def update_plan_item(
     if not item:
         raise HTTPException(status_code=404, detail="PlanItem not found")
 
-    old_status = item.status
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(item, key, value)
 
     await db.commit()
     await db.refresh(item)
-
-    action = "updated"
-    if "status" in update_data and update_data["status"] != old_status:
-        action = "completed" if update_data["status"] == "done" else "status_changed"
-
-    # 获取 plan 的 project_id
-    plan_result = await db.execute(select(Plan).where(Plan.id == plan_id))
-    plan = plan_result.scalar_one_or_none()
-
-    await log_activity(
-        db, entity_type="plan_item", entity_id=item.id,
-        action=action, actor=user["sub"],
-        old_value={"status": old_status},
-        new_value={"status": item.status, "completed_by": item.completed_by},
-        project_id=plan.project_id if plan else None,
-    )
     return item
 
 
@@ -369,17 +208,6 @@ async def delete_plan_item(plan_id: int, item_id: int, db: AsyncSession = Depend
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="PlanItem not found")
-
-    # 获取 plan 的 project_id
-    plan_result = await db.execute(select(Plan).where(Plan.id == plan_id))
-    plan = plan_result.scalar_one_or_none()
-
-    await log_activity(
-        db, entity_type="plan_item", entity_id=item.id,
-        action="deleted", actor=user["sub"],
-        old_value={"title": item.title},
-        project_id=plan.project_id if plan else None,
-    )
 
     await db.delete(item)
     await db.commit()

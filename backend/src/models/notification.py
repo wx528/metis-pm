@@ -15,4 +15,4 @@ class Notification(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    project = relationship("Project", foreign_keys=[project_id])
+    project = relationship("Project", foreign_keys=[project_id], overlaps="notifications")

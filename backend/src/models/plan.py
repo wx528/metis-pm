@@ -7,17 +7,11 @@ from src.core.database import Base, EnumColumn
 
 
 class PlanStatus(str, enum.Enum):
-    DRAFT = "draft"               # 草稿
-    PENDING_APPROVAL = "pending_approval"  # 待审批
-    ACTIVE = "active"             # 进行中
-    COMPLETED = "completed"       # 已完成
-    ABANDONED = "abandoned"       # 已废弃
-
-
-class PlanSource(str, enum.Enum):
-    USER = "user"
-    AI_AGENT = "ai_agent"
-    COLLABORATIVE = "collaborative"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
 
 
 class Plan(Base):
@@ -27,16 +21,13 @@ class Plan(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(EnumColumn(PlanStatus), default=PlanStatus.DRAFT)
-    proposed_by = Column(EnumColumn(PlanSource), default=PlanSource.USER)
-    proposed_by_name = Column(String(100), nullable=True)
-    approved_by = Column(String(20), nullable=True)
+    status = Column(EnumColumn(PlanStatus), default=PlanStatus.PENDING)
+    proposed_by = Column(String(50), nullable=True)
+    approved_by = Column(String(50), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     reject_reason = Column(Text, nullable=True)
-    current_milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     project = relationship("Project", back_populates="plans", foreign_keys=[project_id])
-    current_milestone = relationship("Milestone", foreign_keys=[current_milestone_id])
     plan_items = relationship("PlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="PlanItem.sort_order")

@@ -7,7 +7,6 @@ from sqlalchemy.orm import selectinload
 from src.core.dependencies import get_db
 from src.core.notification import create_notification
 from src.models.issue import Issue, IssueType, IssueStatus, IssuePriority
-from src.models.notification import NotificationType
 from src.models.comment import Comment
 from src.schemas.issue import IssueCreate, IssueUpdate, IssueRead, IssueReadWithComments, IssueListResponse
 from src.schemas.comment import CommentCreate, CommentRead

@@ -1,37 +1,14 @@
-import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, or_
+from sqlalchemy import select, func, desc, update
 
 from src.core.dependencies import get_db
-from src.models.notification import Notification, NotificationType
-from src.schemas.notification import (
-    NotificationRead, NotificationListResponse, UnreadCountResponse,
-)
-from src.core.notification import register_sse_connection, unregister_sse_connection
+from src.models.notification import Notification
+from src.schemas.notification import NotificationRead, NotificationListResponse, UnreadCountResponse
 from src.routes.auth import get_current_user
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
-
-
-def _recipient_filter(user: dict):
-    sub = user.get("sub", "")
-    role = user.get("role", "")
-    # 直接发给该用户的通知
-    personal = Notification.recipient == sub
-    # 发给该角色所有成员的通知（agent, mate, tester, registrar 等）
-    role_match = Notification.recipient == role
-    # 发给 ai_agent 泛角色的通知（所有 agent 角色可见）
-    agent_broadcast = Notification.recipient == "ai_agent" if role == "agent" else False
-
-    if role == "agent":
-        return or_(personal, role_match, agent_broadcast)
-    if role in ("mate", "tester", "registrar"):
-        return or_(personal, role_match)
-    # admin / user：admin 可以看到所有通知（包括角色通知），用于监控
-    return or_(personal, Notification.recipient == "admin", Notification.recipient.in_(["agent", "mate", "tester", "registrar", "ai_agent"]))
 
 
 @router.get("", response_model=NotificationListResponse)
@@ -40,26 +17,17 @@ async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     unread_only: bool = Query(False),
     project_id: Optional[int] = Query(None),
-    notification_type: Optional[str] = Query(None, description="通知类型筛选"),
-    since: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """通知列表（当前用户的通知）"""
-    query = select(Notification).where(_recipient_filter(user))
+    role = user.get("role", "")
+    query = select(Notification).where(
+        Notification.target_role.in_([role, "all"])
+    )
     if unread_only:
-        query = query.where(Notification.read == False)
+        query = query.where(Notification.is_read == False)
     if project_id is not None:
         query = query.where(Notification.project_id == project_id)
-    if notification_type:
-        query = query.where(Notification.type == notification_type)
-    if since:
-        from datetime import datetime as dt
-        try:
-            since_dt = dt.fromisoformat(since)
-            query = query.where(Notification.created_at >= since_dt)
-        except (ValueError, TypeError):
-            pass
     query = query.order_by(desc(Notification.created_at))
 
     count_query = select(func.count()).select_from(query.subquery())
@@ -73,27 +41,23 @@ async def list_notifications(
 
 @router.get("/unread-count", response_model=UnreadCountResponse)
 async def unread_count(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
-    """未读通知数"""
+    role = user.get("role", "")
     result = await db.execute(
         select(func.count(Notification.id)).where(
-            _recipient_filter(user),
-            Notification.read == False,
+            Notification.target_role.in_([role, "all"]),
+            Notification.is_read == False,
         )
     )
     return {"count": result.scalar() or 0}
 
 
 @router.put("/{notification_id}/read", response_model=NotificationRead)
-async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
-    """标记单条通知已读"""
+async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Notification).where(Notification.id == notification_id))
     notification = result.scalar_one_or_none()
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
-    allowed = [user["sub"], user.get("role", ""), "ai_agent" if user.get("role") == "agent" else ""]
-    if notification.recipient not in allowed:
-        raise HTTPException(status_code=403, detail="Not your notification")
-    notification.read = True
+    notification.is_read = True
     await db.commit()
     await db.refresh(notification)
     return notification
@@ -101,108 +65,11 @@ async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db), us
 
 @router.put("/read-all", status_code=204)
 async def mark_all_read(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
-    """全部标记已读"""
-    from sqlalchemy import update
-    await db.execute(
-        update(Notification)
-        .where(_recipient_filter(user), Notification.read == False)
-        .values(read=True)
-    )
-    await db.commit()
-    return None
-
-
-@router.delete("/batch", status_code=204)
-async def batch_delete_notifications(
-    notification_ids: list[int],
-    db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
-):
-    """批量删除通知"""
-    from sqlalchemy import delete
-    await db.execute(
-        delete(Notification)
-        .where(Notification.id.in_(notification_ids), _recipient_filter(user))
-    )
-    await db.commit()
-    return None
-
-
-@router.put("/batch-read", status_code=204)
-async def batch_mark_read(
-    notification_ids: list[int],
-    db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
-):
-    """批量标记已读"""
-    from sqlalchemy import update
-    await db.execute(
-        update(Notification)
-        .where(Notification.id.in_(notification_ids), _recipient_filter(user))
-        .values(read=True)
-    )
-    await db.commit()
-    return None
-
-
-@router.get("/stream")
-async def notification_stream(
-    db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),
-):
-    """SSE 端点：实时推送通知到当前用户"""
-    recipient = user["sub"]
     role = user.get("role", "")
-    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
-    register_sse_connection(recipient, queue)
-    if role and role != recipient:
-        register_sse_connection(role, queue)
-    if role == "agent" and recipient != "ai_agent":
-        register_sse_connection("ai_agent", queue)
-
-    async def event_generator():
-        try:
-            # 发送初始连接确认 + 当前未读数
-            unread_result = await db.execute(
-                select(func.count(Notification.id)).where(
-                    _recipient_filter(user),
-                    Notification.read == False,
-                )
-            )
-            unread_count = unread_result.scalar() or 0
-            yield f"event: connected\ndata: {recipient}\n\n"
-            yield f"event: unread_count\ndata: {unread_count}\n\n"
-            while True:
-                try:
-                    # 等待新通知，超时 30 秒发送心跳
-                    data = await asyncio.wait_for(queue.get(), timeout=30)
-                    yield f"event: notification\ndata: {data}\n\n"
-                    # 通知后推送最新未读数
-                    unread_result = await db.execute(
-                        select(func.count(Notification.id)).where(
-                            _recipient_filter(user),
-                            Notification.read == False,
-                        )
-                    )
-                    unread_count = unread_result.scalar() or 0
-                    yield f"event: unread_count\ndata: {unread_count}\n\n"
-                except asyncio.TimeoutError:
-                    yield f"event: heartbeat\ndata: ping\n\n"
-        except asyncio.CancelledError:
-            pass
-        finally:
-            unregister_sse_connection(recipient, queue)
-            if role and role != recipient:
-                unregister_sse_connection(role, queue)
-            if role == "agent" and recipient != "ai_agent":
-                unregister_sse_connection("ai_agent", queue)
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    await db.execute(
+        update(Notification)
+        .where(Notification.target_role.in_([role, "all"]), Notification.is_read == False)
+        .values(is_read=True)
     )
+    await db.commit()
+    return None

@@ -27,14 +27,9 @@ dependencies = [
     "python-multipart>=0.0.12",
     "python-dotenv>=1.0",
     "pyjwt[crypto]>=2.9",
-    "mcp>=1.12",
     "httpx[socks]>=0.27",
     "asgi-lifespan>=2.1",
-    "cryptography>=42.0",
-    "prometheus-client>=0.20",
-    "prometheus-fastapi-instrumentator>=7.0",
     "bcrypt>=4.0",
-    "requests>=2.32",
 ]
 
 [project.urls]
@@ -42,20 +37,11 @@ Homepage = "https://github.com/wx528/metis-pm"
 Repository = "https://github.com/wx528/metis-pm"
 Issues = "https://github.com/wx528/metis-pm/issues"
 
-[project.scripts]
-metis-pm-mcp = "mcp_server:main"
-
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.5",
-]
-copilot = [
-    "pm-copilot-engine>=0.1",
-]
-postgres = [
-    "psycopg[binary]>=3.1",
 ]
 
 [build-system]

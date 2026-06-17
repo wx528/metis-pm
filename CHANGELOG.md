@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.0.0 (2026-06-17)
+
+### Breaking Changes
+- Simplified from 15 models to 6 (Project, Issue, Comment, Plan, PlanItem, Notification)
+- Replaced JWT login with API Key authentication
+- Removed MCP Server, Copilot, A2A, TriggerHub
+- Replaced with 4 independent pm-copilot-engine agent containers (agent/mate/tester/registrar)
+- Frontend reduced from 20 pages to 5
+- Removed Milestones, Servers, Workflows, Git Integration, Feedback, Risk Alerts, Activity Logs
+
 ## [1.4.0] - 2026-06-15
 
 ### 架构升级：AI Copilot、TriggerHub 事件调度、A2A 协议

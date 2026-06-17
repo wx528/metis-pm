@@ -1,39 +1,16 @@
-# ========================================
-# Metis PM - Docker Compose
-# ========================================
-#
-# 快速启动：
-#   cp .env.example .env   # 编辑密码和配置
-#   docker compose up -d
-#
-# 访问：
-#   前端: http://localhost:8080
-#   API:  http://localhost:8080/api/v1
-#   MCP:  http://localhost:8080/mcp (通过 nginx 代理)
-#   MCP 直连: http://localhost:9000/mcp
-#
-# PostgreSQL 模式（可选）：
-#   1. 取消下方 postgres 服务和环境的注释
-#   2. 设置 DATABASE_URL=postgresql+psycopg://pm:pm@postgres:5432/pm
-#   3. docker compose up -d
-#
-
 services:
-  # ─── 后端 API ────────────────────────────────────────
   backend:
     build: ./backend
     container_name: pm-backend
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      - sqlite_data:/data
-      - backup_data:/data/backups
-    env_file:
-      - .env
+    ports: ["${BACKEND_PORT:-8000}:8000"]
+    volumes: [sqlite_data:/data]
     environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:////data/metis_pm.db}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-8080},http://127.0.0.1:${FRONTEND_PORT:-8080},http://${HOST_IP:-localhost}:${FRONTEND_PORT:-8080}}
-      - DEBUG=${DEBUG:-false}
+      - DATABASE_URL=sqlite+aiosqlite:////data/metis_pm.db
+      - API_KEY=${API_KEY:-metis-pm-default-key-change-me}
+      - SECRET_KEY=${SECRET_KEY:-not-used-in-v2}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
+      - AGENT_PASSWORDS_JSON=${AGENT_PASSWORDS_JSON:-{}}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -41,83 +18,89 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  # ─── MCP Server ──────────────────────────────────────
-  mcp:
-    build: ./backend
-    container_name: pm-mcp
-    ports:
-      - "${MCP_PORT:-9000}:9000"
-    env_file:
-      - .env
-    environment:
-      - PM_API_URL=http://backend:8000/api/v1
-      - MCP_TRANSPORT=streamable-http
-      - MCP_PORT=9000
-      - MCP_HOST=0.0.0.0
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health')"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    entrypoint: ["python", "mcp_server_unified.py"]
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
-
-  # ─── 前端 (nginx) ────────────────────────────────────
   frontend:
-    build:
-      context: ./frontend
-      args:
-        APP_VERSION: "${APP_VERSION:-1.3.0}"
-        VITE_API_URL: "/api/v1"
+    build: ./frontend
     container_name: pm-frontend
-    ports:
-      - "${FRONTEND_PORT:-8080}:80"
-    depends_on:
-      backend:
-        condition: service_healthy
+    ports: ["${FRONTEND_PORT:-8080}:80"]
+    depends_on: [backend]
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
 
-  # ─── PostgreSQL（可选，替代 SQLite）──────────────────
-  # 取消注释启用 PostgreSQL 模式
-  # postgres:
-  #   image: postgres:16-alpine
-  #   container_name: pm-postgres
-  #   environment:
-  #     POSTGRES_USER: pm
-  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE-ME}
-  #     POSTGRES_DB: pm
-  #   volumes:
-  #     - pg_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U pm"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   restart: unless-stopped
+  agent:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        ROLE_DIR: agent
+    container_name: pm-agent
+    ports: ["9001:9001"]
+    environment:
+      - BACKEND_URL=http://backend:8000/api/v1
+      - API_KEY=${API_KEY:-metis-pm-default-key-change-me}
+      - PM_MODEL=${PM_MODEL:-gpt-4o}
+      - PM_API_BASE_URL=${PM_API_BASE_URL}
+      - PM_API_KEY=${PM_API_KEY}
+      - ROLE=agent
+      - MCP_PORT=9001
+    depends_on: [backend]
+    restart: unless-stopped
+
+  mate:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        ROLE_DIR: mate
+    container_name: pm-mate
+    ports: ["9002:9002"]
+    environment:
+      - BACKEND_URL=http://backend:8000/api/v1
+      - API_KEY=${API_KEY:-metis-pm-default-key-change-me}
+      - PM_MODEL=${PM_MODEL:-gpt-4o}
+      - PM_API_BASE_URL=${PM_API_BASE_URL}
+      - PM_API_KEY=${PM_API_KEY}
+      - ROLE=mate
+      - MCP_PORT=9002
+    depends_on: [backend]
+    restart: unless-stopped
+
+  tester:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        ROLE_DIR: tester
+    container_name: pm-tester
+    ports: ["9003:9003"]
+    environment:
+      - BACKEND_URL=http://backend:8000/api/v1
+      - API_KEY=${API_KEY:-metis-pm-default-key-change-me}
+      - PM_MODEL=${PM_MODEL:-gpt-4o}
+      - PM_API_BASE_URL=${PM_API_BASE_URL}
+      - PM_API_KEY=${PM_API_KEY}
+      - ROLE=tester
+      - MCP_PORT=9003
+    depends_on: [backend]
+    restart: unless-stopped
+
+  registrar:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        ROLE_DIR: registrar
+    container_name: pm-registrar
+    ports: ["9004:9004"]
+    environment:
+      - BACKEND_URL=http://backend:8000/api/v1
+      - API_KEY=${API_KEY:-metis-pm-default-key-change-me}
+      - PM_MODEL=${PM_MODEL:-gpt-4o}
+      - PM_API_BASE_URL=${PM_API_BASE_URL}
+      - PM_API_KEY=${PM_API_KEY}
+      - ROLE=registrar
+      - MCP_PORT=9004
+    depends_on: [backend]
+    restart: unless-stopped
 
 volumes:
   sqlite_data:
-  backup_data:
-  # pg_data:

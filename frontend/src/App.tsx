@@ -1,102 +1,31 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ConfigProvider, theme } from "antd";
+import { ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
-import { AuthProvider, useAuth } from "./hooks/useAuth";
-import { ProjectProvider } from "./hooks/useProject";
-import { NotificationProvider } from "./hooks/useNotifications";
-import { ThemeProvider, useTheme } from "./hooks/useTheme";
 import Layout from "./components/Layout";
-import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Board from "./pages/Board";
-import Graph from "./pages/Graph";
-import Workflows from "./pages/Workflows";
 import Issues from "./pages/Issues";
 import IssueDetail from "./pages/IssueDetail";
-import Milestones from "./pages/Milestones";
 import Plans from "./pages/Plans";
 import PlanDetail from "./pages/PlanDetail";
-import Servers from "./pages/Servers";
-import Projects from "./pages/Projects";
-import ProjectRegistrations from "./pages/ProjectRegistrations";
-import Feedbacks from "./pages/Feedbacks";
-import RiskAlerts from "./pages/RiskAlerts";
-import DeadLetterQueue from "./pages/DeadLetterQueue";
-import GitIntegration from "./pages/GitIntegration";
-import Notifications from "./pages/Notifications";
-
-function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn } = useAuth();
-  return isLoggedIn ? <>{children}</> : <Navigate to="/login" />;
-}
-
-function ThemedApp() {
-  const { theme: themeMode } = useTheme();
-  return (
-    <ConfigProvider
-      locale={zhCN}
-      theme={{
-        algorithm: themeMode === "dark" ? theme.darkAlgorithm : theme.defaultAlgorithm,
-      }}
-    >
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <ProjectProvider>
-                    <NotificationProvider>
-                      <Layout />
-                    </NotificationProvider>
-                  </ProjectProvider>
-                </PrivateRoute>
-              }
-            >
-              {/* 兼容旧路由 → 重定向到 default 项目 */}
-              <Route index element={<Navigate to="/projects/default/dashboard" replace />} />
-              <Route path="issues" element={<Navigate to="/projects/default/issues" replace />} />
-              <Route path="issues/:id" element={<IssueDetail />} />
-              <Route path="milestones" element={<Navigate to="/projects/default/milestones" replace />} />
-              <Route path="plans" element={<Navigate to="/projects/default/plans" replace />} />
-              <Route path="plans/:id" element={<PlanDetail />} />
-              <Route path="servers" element={<Navigate to="/projects/default/servers" replace />} />
-
-              {/* 项目管理（跨项目，不绑定 slug） */}
-              <Route path="projects" element={<Projects />} />
-              <Route path="project-registrations" element={<ProjectRegistrations />} />
-              <Route path="feedbacks" element={<Feedbacks />} />
-              <Route path="risk-alerts" element={<RiskAlerts />} />
-              <Route path="dead-letter" element={<DeadLetterQueue />} />
-              <Route path="git-integration" element={<GitIntegration />} />
-              <Route path="notifications" element={<Notifications />} />
-
-              {/* 新路由：带项目 slug */}
-              <Route path="projects/:projectSlug/dashboard" element={<Dashboard />} />
-              <Route path="projects/:projectSlug/board" element={<Board />} />
-              <Route path="projects/:projectSlug/graph" element={<Graph />} />
-              <Route path="projects/:projectSlug/issues" element={<Issues />} />
-              <Route path="projects/:projectSlug/issues/:id" element={<IssueDetail />} />
-              <Route path="projects/:projectSlug/milestones" element={<Milestones />} />
-              <Route path="projects/:projectSlug/plans" element={<Plans />} />
-              <Route path="projects/:projectSlug/plans/:id" element={<PlanDetail />} />
-              <Route path="projects/:projectSlug/servers" element={<Servers />} />
-              <Route path="projects/:projectSlug/workflows" element={<Workflows />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </ConfigProvider>
-  );
-}
 
 function App() {
   return (
-    <ThemeProvider>
-      <ThemedApp />
-    </ThemeProvider>
+    <ConfigProvider locale={zhCN}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Navigate to="/projects/default/dashboard" replace />} />
+            <Route path="issues/:id" element={<IssueDetail />} />
+            <Route path="plans/:id" element={<PlanDetail />} />
+            <Route path="projects/:projectSlug/dashboard" element={<Dashboard />} />
+            <Route path="projects/:projectSlug/issues" element={<Issues />} />
+            <Route path="projects/:projectSlug/issues/:id" element={<IssueDetail />} />
+            <Route path="projects/:projectSlug/plans" element={<Plans />} />
+            <Route path="projects/:projectSlug/plans/:id" element={<PlanDetail />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ConfigProvider>
   );
 }
 

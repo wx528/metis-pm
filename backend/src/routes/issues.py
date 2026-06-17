@@ -72,9 +72,8 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
 
     if issue.priority in (IssuePriority.P0, IssuePriority.P1):
         await create_notification(
-            db, recipient="admin",
-            type=NotificationType.TASK_CREATED,
-            title=f"[{issue.priority}] {issue.title}",
+            db, target_role="admin",
+            message=f"[{issue.priority}] {issue.title}",
             project_id=issue.project_id,
         )
     return issue
@@ -107,9 +106,8 @@ async def update_issue(issue_id: int, data: IssueUpdate, db: AsyncSession = Depe
 
     if update_data.get("status") == IssueStatus.CLOSED:
         await create_notification(
-            db, recipient="admin",
-            type=NotificationType.TASK_COMPLETED,
-            title=f"Issue #{issue.id} closed: {issue.title}",
+            db, target_role="admin",
+            message=f"Issue #{issue.id} closed: {issue.title}",
             project_id=issue.project_id,
         )
     return issue

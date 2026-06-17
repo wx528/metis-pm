@@ -2,6 +2,8 @@ from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from src.schemas.comment import CommentRead
+
 
 class IssueCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)

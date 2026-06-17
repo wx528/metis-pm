@@ -73,7 +73,7 @@ async def create_issue(data: IssueCreate, db: AsyncSession = Depends(get_db), us
     if issue.priority in (IssuePriority.P0, IssuePriority.P1):
         await create_notification(
             db, target_role="admin",
-            message=f"[{issue.priority}] {issue.title}",
+            message=f"[{issue.priority.value}] {issue.title}",
             project_id=issue.project_id,
         )
     return issue

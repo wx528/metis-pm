@@ -27,7 +27,7 @@ def register_tools(mcp, require_role, safe_tool):
             if item.get("description"):
                 d = item["description"]
                 desc_preview = f"\n    描述: {d[:120]}..." if len(d) > 120 else f"\n    描述: {d}"
-            lines.append(f"  Plan #{item['id']} {item['title']} (by {item.get('proposed_by_name') or item.get('proposed_by','?')}){desc_preview}")
+            lines.append(f"  Plan #{item['id']} {item['title']} (by {item.get('proposed_by','?')}){desc_preview}")
             lines.append(f"    创建: {item.get('created_at','?')}")
         return "\n".join(lines)
 

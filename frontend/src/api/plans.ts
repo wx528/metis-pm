@@ -18,11 +18,10 @@ export interface Plan {
   title: string;
   description?: string;
   status: string;
-  proposed_by: string;
+  proposed_by?: string;
   approved_by?: string;
   approved_at?: string;
   reject_reason?: string;
-  current_milestone_id?: number;
   created_at: string;
   updated_at: string;
   plan_items?: PlanItem[];

@@ -196,14 +196,13 @@ def register_tools(mcp, require_role, safe_tool):
     @mcp.tool()
     @require_role("agent", "admin")
     async def propose_plan(title: str, description: str = "", project_id: Optional[int] = None) -> str:
-        """提议一个新计划（状态为 pending_approval，等待用户审批）"""
+        """提议一个新计划（状态为 pending，等待用户审批）"""
         agent_name = await _current_sub()
         payload = {
             "title": title,
             "description": description,
-            "proposed_by": "ai_agent",
-            "proposed_by_name": agent_name,
-            "status": "pending_approval",
+            "proposed_by": agent_name,
+            "status": "pending",
         }
         if project_id:
             payload["project_id"] = project_id

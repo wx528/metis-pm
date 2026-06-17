@@ -254,7 +254,7 @@ async def handle_pull_request_event(
         # PR 合并时更新 plan 状态
         if integration.auto_link_pr and action == "closed" and pr.get("merged"):
             if plan.status == PlanStatus.IN_PROGRESS:
-                plan.status = PlanStatus.COMPLETED
+                plan.status = PlanStatus.DONE
                 results["plans_updated"] += 1
                 
                 # 记录活动日志

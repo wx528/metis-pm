@@ -53,11 +53,9 @@ async def list_plans(
             description=p.description,
             status=p.status,
             proposed_by=p.proposed_by,
-            proposed_by_name=p.proposed_by_name,
             approved_by=p.approved_by,
             approved_at=p.approved_at,
             reject_reason=p.reject_reason,
-            current_milestone_id=p.current_milestone_id,
             created_at=p.created_at,
             updated_at=p.updated_at,
             item_count=row.total or 0,
@@ -82,7 +80,7 @@ async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user
     )
 
     # Plan pending_approval → 通知 admin 和所有 mate 审批
-    if plan.status == PlanStatus.PENDING_APPROVAL:
+    if plan.status == PlanStatus.PENDING:
         from src.settings import settings
         notification_recipients = ["admin"]
         for name, (pwd, role) in settings.agent_password_map.items():
@@ -100,7 +98,7 @@ async def create_plan(data: PlanCreate, db: AsyncSession = Depends(get_db), user
             )
 
         # 给提议者发确认通知
-        proposer = plan.proposed_by_name or plan.proposed_by
+        proposer = plan.proposed_by
         if proposer and proposer != "admin" and proposer != "user":
             await create_notification(
                 db, recipient=proposer,
@@ -134,12 +132,12 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    old_values = {k: getattr(plan, k) for k in ["title", "description", "status", "current_milestone_id"]}
+    old_values = {k: getattr(plan, k) for k in ["title", "description", "status"]}
 
     update_data = data.model_dump(exclude_unset=True)
 
-    # 如果从 abandoned 重新提交为 pending_approval，清除 reject_reason
-    if update_data.get("status") == PlanStatus.PENDING_APPROVAL and plan.status == PlanStatus.ABANDONED:
+    # 如果从 rejected 重新提交为 pending，清除 reject_reason
+    if update_data.get("status") == PlanStatus.PENDING and plan.status == PlanStatus.REJECTED:
         plan.reject_reason = None
         plan.approved_by = None
         plan.approved_at = None
@@ -159,7 +157,7 @@ async def update_plan(plan_id: int, data: PlanUpdate, db: AsyncSession = Depends
     )
 
     # 重新提交审批时通知 admin 和所有 mate
-    if update_data.get("status") == PlanStatus.PENDING_APPROVAL and old_values.get("status") == PlanStatus.ABANDONED:
+    if update_data.get("status") == PlanStatus.PENDING and old_values.get("status") == PlanStatus.REJECTED:
         from src.settings import settings
         notification_recipients = ["admin"]
         for name, (pwd, role) in settings.agent_password_map.items():
@@ -206,11 +204,11 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
     plan = result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    if plan.status != PlanStatus.PENDING_APPROVAL:
-        raise HTTPException(status_code=400, detail="Only pending_approval plans can be approved")
+    if plan.status != PlanStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Only pending plans can be approved")
 
     old_status = plan.status
-    plan.status = PlanStatus.ACTIVE
+    plan.status = PlanStatus.APPROVED
     plan.approved_by = user["sub"]
     plan.approved_at = datetime.now(timezone.utc)
 
@@ -226,7 +224,7 @@ async def approve_plan(plan_id: int, db: AsyncSession = Depends(get_db), user: d
     )
 
     # 通知 plan 提议者审批通过
-    recipient = plan.proposed_by_name or plan.proposed_by
+    recipient = plan.proposed_by
     if recipient and recipient != "user":
         await create_notification(
             db, recipient=recipient,
@@ -258,11 +256,11 @@ async def reject_plan(plan_id: int, reason: Optional[str] = Body(None, embed=Tru
     plan = result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    if plan.status != PlanStatus.PENDING_APPROVAL:
-        raise HTTPException(status_code=400, detail="Only pending_approval plans can be rejected")
+    if plan.status != PlanStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Only pending plans can be rejected")
 
     old_status = plan.status
-    plan.status = PlanStatus.ABANDONED
+    plan.status = PlanStatus.REJECTED
     plan.reject_reason = reason
 
     await db.commit()
@@ -277,7 +275,7 @@ async def reject_plan(plan_id: int, reason: Optional[str] = Body(None, embed=Tru
     )
 
     # 通知 plan 提议者被拒绝
-    recipient = plan.proposed_by_name or plan.proposed_by
+    recipient = plan.proposed_by
     if recipient and recipient != "user":
         await create_notification(
             db, recipient=recipient,
@@ -309,8 +307,8 @@ async def create_plan_item(plan_id: int, data: PlanItemCreate, db: AsyncSession 
     plan = plan_result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    if plan.status not in (PlanStatus.ACTIVE, PlanStatus.COMPLETED):
-        raise HTTPException(status_code=400, detail=f"Plan 状态为 '{plan.status}'，无法添加进度项。只有 active 或 completed 状态的 Plan 才能更新进度。")
+    if plan.status not in (PlanStatus.APPROVED, PlanStatus.DONE):
+        raise HTTPException(status_code=400, detail=f"Plan 状态为 '{plan.status}'，无法添加进度项。只有 approved 或 done 状态的 Plan 才能更新进度。")
 
     item = PlanItem(plan_id=plan_id, **data.model_dump())
     db.add(item)

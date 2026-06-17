@@ -14,11 +14,11 @@ import { planKeys } from "../queries/planQueries";
 const { Option } = Select;
 
 const statusColors: Record<string, string> = {
-  draft: "default",
-  pending_approval: "warning",
-  active: "processing",
-  completed: "success",
-  abandoned: "default",
+  pending: "warning",
+  approved: "processing",
+  rejected: "default",
+  in_progress: "processing",
+  done: "success",
 };
 
 export default function Plans() {
@@ -144,7 +144,7 @@ export default function Plans() {
       width: 200,
       render: (_: any, record: Plan) => (
         <Space>
-          {record.status === "pending_approval" && (
+          {record.status === "pending" && (
             <>
               <Button
                 type="primary"
@@ -193,10 +193,11 @@ export default function Plans() {
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="status" label="状态" initialValue="draft">
+          <Form.Item name="status" label="状态" initialValue="pending">
             <Select>
-              <Option value="draft">draft</Option>
-              <Option value="active">active</Option>
+              <Option value="pending">pending</Option>
+              <Option value="in_progress">in_progress</Option>
+              <Option value="done">done</Option>
             </Select>
           </Form.Item>
         </Form>

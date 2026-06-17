@@ -137,7 +137,7 @@ def register_tools(mcp, require_role, safe_tool):
             lines.append("=== 待审批计划 ===")
             for p in pending_plans:
                 desc_preview = f" — {p['description'][:80]}..." if p.get("description") and len(p["description"]) > 80 else (f" — {p['description']}" if p.get("description") else "")
-                lines.append(f"  Plan #{p['id']}: {p['title']}{desc_preview} (by {p.get('proposed_by_name') or p.get('proposed_by','?')})")
+                lines.append(f"  Plan #{p['id']}: {p['title']}{desc_preview} (by {p.get('proposed_by','?')})")
 
         recent = dash.get("recent_activities", [])
         if recent:
@@ -175,10 +175,10 @@ def register_tools(mcp, require_role, safe_tool):
             my_open = my_data.get("total", 0)
             lines.append(f"我创建的 Open Issue: {my_open}")
 
-        my_plans_resp = await _api_request("GET", f"{API_BASE}/plans", params={"status": "pending_approval"})
+        my_plans_resp = await _api_request("GET", f"{API_BASE}/plans", params={"status": "pending"})
         if my_plans_resp.status_code < 400:
             my_plans = my_plans_resp.json()
-            my_pending = sum(1 for p in my_plans if p.get("proposed_by_name") == agent_name)
+            my_pending = sum(1 for p in my_plans if p.get("proposed_by") == agent_name)
             if my_pending > 0:
                 lines.append(f"我提交的待审批 Plan: {my_pending}")
 
@@ -339,7 +339,7 @@ def register_tools(mcp, require_role, safe_tool):
             reject = ""
             if item.get("reject_reason"):
                 reject = f"\n    拒绝原因: {item['reject_reason']}"
-            lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (by {item.get('proposed_by_name') or item['proposed_by']}){desc_preview}{progress}{approval}{reject}")
+            lines.append(f"  #{item['id']} [{item['status']}] {item['title']} (by {item.get('proposed_by')}){desc_preview}{progress}{approval}{reject}")
         return "\n".join(lines)
 
     @mcp.tool()
@@ -353,7 +353,7 @@ def register_tools(mcp, require_role, safe_tool):
         d = resp.json()
         lines = [
             f"Plan #{d['id']} [{d['status']}] {d['title']}",
-            f"  提议者: {d.get('proposed_by_name') or d.get('proposed_by', '?')} | 项目: #{d.get('project_id', '?')}",
+            f"  提议者: {d.get('proposed_by', '?')} | 项目: #{d.get('project_id', '?')}",
         ]
         if d.get('description'):
             lines.append(f"  描述: {d['description']}")

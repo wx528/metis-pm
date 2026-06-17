@@ -280,10 +280,10 @@ async def _check_stuck_workflows():
                         entity_id=issue.id,
                     )
                 
-                # 检测卡住的 Plan（pending_approval 超过 24 小时）
+                # 检测卡住的 Plan（pending 超过 24 小时）
                 stuck_plans_result = await db.execute(
                     select(Plan).where(
-                        Plan.status == PlanStatus.PENDING_APPROVAL,
+                        Plan.status == PlanStatus.PENDING,
                         Plan.updated_at <= threshold,
                     )
                 )

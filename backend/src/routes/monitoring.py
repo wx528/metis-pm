@@ -78,9 +78,9 @@ async def get_system_metrics(
     # 3. Plan 统计
     plans_query = select(
         func.count(Plan.id).label("total"),
-        func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending"),
-        func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
-        func.sum(case((Plan.status == PlanStatus.COMPLETED, 1), else_=0)).label("completed"),
+        func.sum(case((Plan.status == PlanStatus.PENDING, 1), else_=0)).label("pending"),
+        func.sum(case((Plan.status == PlanStatus.IN_PROGRESS, 1), else_=0)).label("active"),
+        func.sum(case((Plan.status == PlanStatus.DONE, 1), else_=0)).label("completed"),
     )
     plans_result = await db.execute(plans_query)
     plans_row = plans_result.one()
@@ -157,9 +157,9 @@ async def get_stuck_workflows(
     stuck_issues_result = await db.execute(stuck_issues_query)
     stuck_issues = stuck_issues_result.scalars().all()
     
-    # 2. 卡住的 Plan：pending_approval 或 active 且长时间未更新
+    # 2. 卡住的 Plan：pending 或 in_progress 且长时间未更新
     stuck_plans_query = select(Plan).where(
-        Plan.status.in_([PlanStatus.PENDING_APPROVAL, PlanStatus.ACTIVE]),
+        Plan.status.in_([PlanStatus.PENDING, PlanStatus.IN_PROGRESS]),
         Plan.updated_at <= threshold,
     ).order_by(Plan.updated_at)
     

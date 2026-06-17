@@ -1,58 +1,19 @@
-from datetime import datetime
 from typing import Optional, List
+from datetime import datetime
 from pydantic import BaseModel, Field
-
-from src.models.plan import PlanStatus, PlanSource
-from src.models.plan_item import PlanItemStatus
-
-
-class PlanItemRead(BaseModel):
-    id: int
-    plan_id: int
-    title: str
-    description: Optional[str] = None
-    status: PlanItemStatus
-    sort_order: int
-    completed_by: Optional[str] = None
-    completed_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class PlanItemCreate(BaseModel):
-    title: str = Field(..., max_length=200)
-    description: Optional[str] = None
-    status: PlanItemStatus = PlanItemStatus.PENDING
-    sort_order: int = 0
-
-
-class PlanItemUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[PlanItemStatus] = None
-    sort_order: Optional[int] = None
-    completed_by: Optional[str] = None
-    completed_at: Optional[datetime] = None
 
 
 class PlanCreate(BaseModel):
-    project_id: Optional[int] = None
-    title: str = Field(..., max_length=200)
+    title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
-    status: PlanStatus = PlanStatus.DRAFT
-    proposed_by: PlanSource = PlanSource.USER
-    proposed_by_name: Optional[str] = None
-    current_milestone_id: Optional[int] = None
+    proposed_by: Optional[str] = None
+    project_id: Optional[int] = None
 
 
 class PlanUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[PlanStatus] = None
-    current_milestone_id: Optional[int] = None
+    status: Optional[str] = None
 
 
 class PlanRead(BaseModel):
@@ -60,13 +21,11 @@ class PlanRead(BaseModel):
     project_id: Optional[int] = None
     title: str
     description: Optional[str] = None
-    status: PlanStatus
-    proposed_by: PlanSource
-    proposed_by_name: Optional[str] = None
+    status: str
+    proposed_by: Optional[str] = None
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     reject_reason: Optional[str] = None
-    current_milestone_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -75,9 +34,39 @@ class PlanRead(BaseModel):
 
 
 class PlanReadWithItems(PlanRead):
-    plan_items: List[PlanItemRead] = []
+    plan_items: List["PlanItemRead"] = []
 
 
 class PlanReadWithStats(PlanRead):
     item_count: int = 0
     item_done_count: int = 0
+
+
+class PlanItemCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    sort_order: int = 0
+
+
+class PlanItemUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    sort_order: Optional[int] = None
+    completed_by: Optional[str] = None
+
+
+class PlanItemRead(BaseModel):
+    id: int
+    plan_id: int
+    title: str
+    description: Optional[str] = None
+    status: str
+    sort_order: int
+    completed_by: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

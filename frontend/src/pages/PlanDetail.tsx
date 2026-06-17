@@ -20,11 +20,11 @@ import ActivityTimeline from "../components/ActivityTimeline";
 import type { Plan, PlanItem } from "../api";
 
 const statusColors: Record<string, string> = {
-  draft: "default",
-  pending_approval: "warning",
-  active: "processing",
-  completed: "success",
-  abandoned: "default",
+  pending: "warning",
+  approved: "processing",
+  rejected: "default",
+  in_progress: "processing",
+  done: "success",
 };
 
 export default function PlanDetail() {
@@ -123,7 +123,7 @@ export default function PlanDetail() {
           </Space>
         }
         extra={
-          plan.status === "pending_approval" ? (
+          plan.status === "pending" ? (
             <Space>
               <Button type="primary" icon={<CheckOutlined />} onClick={handleApprove}>
                 审批通过

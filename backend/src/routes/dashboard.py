@@ -38,8 +38,8 @@ async def get_dashboard(
     # Plans 统计
     plans_query = select(
         func.count(Plan.id).label("total"),
-        func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending_approval"),
-        func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
+        func.sum(case((Plan.status == PlanStatus.PENDING, 1), else_=0)).label("pending_approval"),
+        func.sum(case((Plan.status == PlanStatus.IN_PROGRESS, 1), else_=0)).label("active"),
     )
     if project_id:
         plans_query = plans_query.where(Plan.project_id == project_id)
@@ -66,7 +66,7 @@ async def get_dashboard(
     activities = activity_result.scalars().all()
 
     # 待审批计划列表
-    pending_plans_query = select(Plan).where(Plan.status == PlanStatus.PENDING_APPROVAL).order_by(Plan.created_at.desc())
+    pending_plans_query = select(Plan).where(Plan.status == PlanStatus.PENDING).order_by(Plan.created_at.desc())
     if project_id:
         pending_plans_query = pending_plans_query.where(Plan.project_id == project_id)
     pending_plans_result = await db.execute(pending_plans_query)

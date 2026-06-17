@@ -407,9 +407,9 @@ async def project_health(
     # 2. Plan 健康度
     plan_stats_query = select(
         func.count(Plan.id).label("total"),
-        func.sum(case((Plan.status == PlanStatus.COMPLETED, 1), else_=0)).label("completed"),
-        func.sum(case((Plan.status == PlanStatus.ACTIVE, 1), else_=0)).label("active"),
-        func.sum(case((Plan.status == PlanStatus.PENDING_APPROVAL, 1), else_=0)).label("pending"),
+        func.sum(case((Plan.status == PlanStatus.DONE, 1), else_=0)).label("completed"),
+        func.sum(case((Plan.status == PlanStatus.IN_PROGRESS, 1), else_=0)).label("active"),
+        func.sum(case((Plan.status == PlanStatus.PENDING, 1), else_=0)).label("pending"),
     ).where(Plan.project_id == project_id)
 
     plan_result = await db.execute(plan_stats_query)

@@ -587,12 +587,12 @@ class WorkflowEngine:
             return {"waiting": True}
 
         elif step.step_type == StepType.PROPOSE_PLAN:
-            from src.models.plan import Plan, PlanStatus, PlanSource
+            from src.models.plan import Plan, PlanStatus
             plan = Plan(
                 title=config.get("title", f"Workflow proposed plan"),
                 description=config.get("description", f"Proposed by workflow #{workflow.id}"),
-                status=PlanStatus.PENDING_APPROVAL,
-                proposed_by=PlanSource.AI_AGENT,
+                status=PlanStatus.PENDING,
+                proposed_by="ai_agent",
                 project_id=workflow.project_id,
             )
             self.db.add(plan)

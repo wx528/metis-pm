@@ -15,11 +15,9 @@ import {
   List,
   Avatar,
 } from "antd";
-import { ArrowLeftOutlined, PauseCircleOutlined, UserOutlined, RobotOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, UserOutlined, RobotOutlined } from "@ant-design/icons";
 import { issuesApi } from "../api/issues";
-import { milestonesApi } from "../api/milestones";
-import ActivityTimeline from "../components/ActivityTimeline";
-import type { Issue, Milestone, Comment } from "../api";
+import type { Issue, Comment } from "../api";
 
 const { Option } = Select;
 
@@ -43,12 +41,9 @@ export default function IssueDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [issue, setIssue] = useState<Issue | null>(null);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [deferOpen, setDeferOpen] = useState(false);
   const [editForm] = Form.useForm();
-  const [deferForm] = Form.useForm();
   const [commentText, setCommentText] = useState("");
 
   const fetchIssue = async () => {
@@ -62,14 +57,8 @@ export default function IssueDetail() {
     }
   };
 
-  const fetchMilestones = async () => {
-    const res = await milestonesApi.list();
-    setMilestones(res.data);
-  };
-
   useEffect(() => {
     fetchIssue();
-    fetchMilestones();
   }, [id]);
 
   const handleUpdate = async (values: any) => {
@@ -81,19 +70,6 @@ export default function IssueDetail() {
       fetchIssue();
     } catch {
       message.error("更新失败");
-    }
-  };
-
-  const handleDefer = async (values: any) => {
-    if (!id) return;
-    try {
-      await issuesApi.defer(Number(id), values.milestone_id, values.reason);
-      message.success("已暂缓");
-      setDeferOpen(false);
-      deferForm.resetFields();
-      fetchIssue();
-    } catch {
-      message.error("暂缓失败");
     }
   };
 
@@ -111,9 +87,6 @@ export default function IssueDetail() {
 
   if (!issue) return <div style={{ padding: 40 }}>加载中...</div>;
 
-  const milestone = milestones.find((m) => m.id === issue.milestone_id);
-  const deferredMilestone = milestones.find((m) => m.id === issue.deferred_to_milestone_id);
-
   return (
     <div>
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/issues")} style={{ marginBottom: 16 }}>
@@ -125,18 +98,12 @@ export default function IssueDetail() {
           <Space>
             <Tag color={priorityColors[issue.priority]}>{issue.priority}</Tag>
             {issue.title}
-            {issue.source === "ai_agent" && <Tag color="purple">AI Agent</Tag>}
           </Space>
         }
         extra={
-          <Space>
-            <Button icon={<PauseCircleOutlined />} onClick={() => setDeferOpen(true)}>
-              暂缓
-            </Button>
-            <Button type="primary" onClick={() => setEditOpen(true)}>
-              编辑
-            </Button>
-          </Space>
+          <Button type="primary" onClick={() => setEditOpen(true)}>
+            编辑
+          </Button>
         }
         loading={loading}
       >
@@ -145,20 +112,7 @@ export default function IssueDetail() {
             <Tag color={statusColors[issue.status]}>{issue.status}</Tag>
           </Descriptions.Item>
           <Descriptions.Item label="类型">{issue.issue_type}</Descriptions.Item>
-          <Descriptions.Item label="来源">{issue.source}</Descriptions.Item>
-          <Descriptions.Item label="负责人">{issue.assignee || "-"}</Descriptions.Item>
-          <Descriptions.Item label="Milestone">{milestone?.title || "-"}</Descriptions.Item>
-          <Descriptions.Item label="标签">{issue.labels || "-"}</Descriptions.Item>
-          {issue.status === "deferred" && (
-            <>
-              <Descriptions.Item label="推迟到">
-                {deferredMilestone?.title || "-"}
-              </Descriptions.Item>
-              <Descriptions.Item label="推迟原因">
-                {issue.deferred_reason || "-"}
-              </Descriptions.Item>
-            </>
-          )}
+          <Descriptions.Item label="负责人">{issue.assignee_role || "-"}</Descriptions.Item>
           <Descriptions.Item label="创建时间">{issue.created_at}</Descriptions.Item>
           <Descriptions.Item label="更新时间">{issue.updated_at}</Descriptions.Item>
         </Descriptions>
@@ -179,13 +133,13 @@ export default function IssueDetail() {
                 <List.Item.Meta
                   avatar={
                     <Avatar
-                      icon={c.author === "ai_agent" ? <RobotOutlined /> : <UserOutlined />}
-                      style={{ backgroundColor: c.author === "ai_agent" ? "#722ed1" : "#1890ff" }}
+                      icon={c.author_role === "ai_agent" ? <RobotOutlined /> : <UserOutlined />}
+                      style={{ backgroundColor: c.author_role === "ai_agent" ? "#722ed1" : "#1890ff" }}
                     />
                   }
                   title={
                     <span>
-                      {c.author || "匿名"}
+                      {c.author_role || "匿名"}
                       <span style={{ color: "#999", fontSize: 12, marginLeft: 8 }}>
                         {new Date(c.created_at).toLocaleString("zh-CN")}
                       </span>
@@ -210,10 +164,6 @@ export default function IssueDetail() {
             发送
           </Button>
         </div>
-
-        <Divider />
-        <h4>活动记录</h4>
-        <ActivityTimeline entityType="issue" entityId={issue.id} />
       </Card>
 
       <Modal title="编辑 Issue" open={editOpen} onCancel={() => setEditOpen(false)} onOk={() => editForm.submit()} width={600}>
@@ -250,37 +200,11 @@ export default function IssueDetail() {
               <Option value="P3">P3</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="milestone_id" label="所属 Milestone">
-            <Select allowClear placeholder="选择 Milestone">
-              {milestones.map((m) => (
-                <Option key={m.id} value={m.id}>
-                  {m.title}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="assignee" label="负责人">
-            <Input placeholder="指定负责人" />
+          <Form.Item name="assignee_role" label="负责人">
+            <Input placeholder="指定负责人角色" />
           </Form.Item>
           <Form.Item name="labels" label="标签">
             <Input placeholder="逗号分隔，如: backend,urgent" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal title="暂缓 Issue" open={deferOpen} onCancel={() => setDeferOpen(false)} onOk={() => deferForm.submit()}>
-        <Form form={deferForm} onFinish={handleDefer} layout="vertical">
-          <Form.Item name="milestone_id" label="推迟到阶段" rules={[{ required: true }]}>
-            <Select>
-              {milestones.map((m) => (
-                <Option key={m.id} value={m.id}>
-                  {m.title}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="reason" label="推迟原因">
-            <Input.TextArea rows={2} placeholder="为什么暂缓？" />
           </Form.Item>
         </Form>
       </Modal>

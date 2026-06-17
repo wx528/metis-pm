@@ -16,7 +16,6 @@ import {
 } from "antd";
 import { ArrowLeftOutlined, PlusOutlined, CheckOutlined, CloseOutlined, RobotOutlined } from "@ant-design/icons";
 import { plansApi } from "../api/plans";
-import ActivityTimeline from "../components/ActivityTimeline";
 import type { Plan, PlanItem } from "../api";
 
 const statusColors: Record<string, string> = {
@@ -183,10 +182,6 @@ export default function PlanDetail() {
             </List.Item>
           )}
         />
-
-        <Divider />
-        <h4>活动记录</h4>
-        <ActivityTimeline entityType="plan" entityId={plan.id} />
       </Card>
 
       <Modal title="添加计划项" open={itemModalOpen} onCancel={() => setItemModalOpen(false)} onOk={() => itemForm.submit()}>

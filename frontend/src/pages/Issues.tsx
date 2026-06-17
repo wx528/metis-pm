@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from "antd";
-import { PlusOutlined, RobotOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
+import { PlusOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { issuesApi } from "../api/issues";
+import { projectsApi, type Project } from "../api/projects";
 import type { Issue } from "../api";
-import { useProject } from "../hooks/useProject";
-import { useIssues } from "../hooks/useIssues";
 import LoadingState from "../components/ui/LoadingState";
 import ErrorState from "../components/ui/ErrorState";
 import { queryClient } from "../queries/queryClient";
-import { issueKeys } from "../queries/issueQueries";
 
 const { Option } = Select;
 
@@ -40,7 +40,9 @@ const typeColors: Record<string, string> = {
 
 export default function Issues() {
   const navigate = useNavigate();
-  const { currentProject } = useProject();
+  const { projectSlug } = useParams<{ projectSlug: string }>();
+  const slug = projectSlug || "default";
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [filters, setFilters] = useState<Record<string, any>>({});
@@ -48,10 +50,25 @@ export default function Issues() {
   const [pageSize, setPageSize] = useState(20);
   const [sortBy, setSortBy] = useState<string>("created_at_desc");
 
-  const { data, isLoading, error } = useIssues(currentProject?.id, filters, page, pageSize, sortBy);
-  const issues = data?.items || [];
-  const milestones = data?.milestones || [];
-  const total = data?.total || 0;
+  useEffect(() => {
+    projectsApi.get(slug).then((res) => setCurrentProject(res.data));
+  }, [slug]);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["issues", currentProject?.id, filters, page, pageSize, sortBy],
+    queryFn: () =>
+      issuesApi.list({
+        project_id: currentProject?.id,
+        ...filters,
+        page,
+        page_size: pageSize,
+        sort_by: sortBy,
+      }),
+    enabled: !!currentProject?.id,
+  });
+
+  const issues = data?.data?.items || [];
+  const total = data?.data?.total || 0;
 
   const handleCreate = async (values: any) => {
     try {
@@ -61,7 +78,7 @@ export default function Issues() {
       message.success("创建成功");
       setModalOpen(false);
       form.resetFields();
-      queryClient.invalidateQueries({ queryKey: issueKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
     } catch {
       message.error("创建失败");
     }
@@ -71,7 +88,7 @@ export default function Issues() {
     try {
       await issuesApi.remove(id);
       message.success("删除成功");
-      queryClient.invalidateQueries({ queryKey: issueKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
     } catch {
       message.error("删除失败");
     }
@@ -85,7 +102,7 @@ export default function Issues() {
     return (
       <ErrorState
         error={error}
-        onRetry={() => queryClient.invalidateQueries({ queryKey: issueKeys.all })}
+        onRetry={() => queryClient.invalidateQueries({ queryKey: ["issues"] })}
       />
     );
   }
@@ -115,22 +132,6 @@ export default function Issues() {
       dataIndex: "status",
       width: 100,
       render: (s: string) => <Tag color={statusColors[s]}>{s}</Tag>,
-    },
-    {
-      title: "来源",
-      dataIndex: "source",
-      width: 100,
-      render: (s: string) => {
-        if (s === "ai_agent") return <Tag icon={<RobotOutlined />} color="purple">AI</Tag>;
-        if (s === "collaborative") return <Tag icon={<TeamOutlined />} color="cyan">协作</Tag>;
-        return <Tag icon={<UserOutlined />}>用户</Tag>;
-      },
-    },
-    {
-      title: "Milestone",
-      dataIndex: "milestone_id",
-      width: 120,
-      render: (id?: number) => milestones.find((m) => m.id === id)?.title || "-",
     },
     {
       title: "操作",
@@ -177,27 +178,6 @@ export default function Issues() {
           <Option value="review">review</Option>
           <Option value="deferred">deferred</Option>
           <Option value="closed">closed</Option>
-        </Select>
-        <Select
-          placeholder="来源"
-          allowClear
-          style={{ width: 120 }}
-          onChange={(v) => setFilters((f) => ({ ...f, source: v }))}
-        >
-          <Option value="user">user</Option>
-          <Option value="ai_agent">ai_agent</Option>
-        </Select>
-        <Select
-          placeholder="Milestone"
-          allowClear
-          style={{ width: 150 }}
-          onChange={(v) => setFilters((f) => ({ ...f, milestone_id: v }))}
-        >
-          {milestones.map((m) => (
-            <Option key={m.id} value={m.id}>
-              {m.title}
-            </Option>
-          ))}
         </Select>
         <Select
           placeholder="排序"
@@ -261,15 +241,6 @@ export default function Issues() {
               <Option value="improvement">improvement</Option>
               <Option value="documentation">documentation</Option>
               <Option value="idea">idea</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="milestone_id" label="Milestone">
-            <Select allowClear>
-              {milestones.map((m) => (
-                <Option key={m.id} value={m.id}>
-                  {m.title}
-                </Option>
-              ))}
             </Select>
           </Form.Item>
         </Form>
